@@ -79,6 +79,33 @@ def mask_dni(dni):
         return "****"
     return d[:4] + "*" * (len(d) - 4)
 
+
+def _nombre_archivo_acta(incidencia, alumno):
+    """
+    Genera un nombre de archivo legible para el PDF del acta.
+    Formato: Acta_Apellidos_Nombres_YYYY-MM-DD.pdf
+    """
+    def _limpiar(txt):
+        if not txt:
+            return "SinDato"
+        txt = str(txt).strip()
+        reemplazos = {
+            "á":"a","é":"e","í":"i","ó":"o","ú":"u",
+            "Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U",
+            "ñ":"n","Ñ":"N","ü":"u","Ü":"U",
+        }
+        for k, v in reemplazos.items():
+            txt = txt.replace(k, v)
+        txt = re.sub(r"[^A-Za-z0-9]+", "_", txt)
+        txt = re.sub(r"_+", "_", txt).strip("_")
+        return txt or "SinDato"
+
+    ap_p = _limpiar(alumno.get("apellido_paterno") if alumno else "")
+    ap_m = _limpiar(alumno.get("apellido_materno") if alumno else "")
+    nombres = _limpiar(alumno.get("nombres") if alumno else "")
+    fecha = (incidencia.get("fecha") if incidencia else None) or hoy_str()
+    return f"Acta_{ap_p}_{ap_m}_{nombres}_{fecha}.pdf"
+
 def dias_desde(fecha_str):
     """Días transcurridos desde fecha_str (YYYY-MM-DD)."""
     try:
@@ -1148,18 +1175,33 @@ def generar_pdf_acta(incidencia, alumno, acta_data):
     c = pdfcanvas.Canvas(buf, pagesize=A4)
     width, height = A4
 
+    # ── Encabezado con franja azul ──
     c.setFillColorRGB(0.039, 0.239, 0.568)
-    c.rect(0, height - 3.2*cm, width, 3.2*cm, fill=1, stroke=0)
+    c.rect(0, height - 3.8*cm, width, 3.8*cm, fill=1, stroke=0)
     c.setFillColorRGB(1, 1, 1)
     c.setFont("Helvetica-Bold", 18)
-    c.drawString(2*cm, height - 1.6*cm, "ACTA DE INCIDENCIA")
-    c.setFont("Helvetica", 10)
-    c.drawString(2*cm, height - 2.3*cm,
-                 "I.E. Yarinacocha - TOECE")
-    c.drawString(2*cm, height - 2.8*cm,
-                 f"Emitida: {timestamp_str()}")
+    c.drawString(2*cm, height - 1.5*cm, "ACTA DE INCIDENCIA")
 
-    y = height - 4.2*cm
+    # Nombre del alumno en el encabezado
+    c.setFont("Helvetica-Bold", 12)
+    nombre_al_cab = (f"{alumno.get('apellido_paterno','')} "
+                     f"{alumno.get('apellido_materno','') or ''}, "
+                     f"{alumno.get('nombres','')}")
+    c.drawString(2*cm, height - 2.2*cm, f"Alumno: {nombre_al_cab}")
+
+    # Fecha de la incidencia en el encabezado
+    c.setFont("Helvetica", 11)
+    c.drawString(2*cm, height - 2.75*cm,
+                 f"Fecha de incidencia: {incidencia.get('fecha','')} "
+                 f"{incidencia.get('hora','')}")
+
+    # Fecha de emisión del acta
+    c.setFont("Helvetica-Oblique", 9)
+    c.drawString(2*cm, height - 3.25*cm,
+                 f"Acta emitida: {timestamp_str()}")
+
+    # ── Cuerpo ──
+    y = height - 4.8*cm
     c.setFillColorRGB(0, 0, 0)
     c.setFont("Helvetica-Bold", 12)
     c.drawString(2*cm, y, "Datos del alumno")
@@ -1233,6 +1275,7 @@ def generar_pdf_acta(incidencia, alumno, acta_data):
     c.drawString(2*cm, y, "Firmas")
     y -= 1.2*cm
 
+    # Firma del alumno
     firma_al = acta_data.get("firma_alumno_base64")
     if firma_al:
         try:
@@ -1247,6 +1290,7 @@ def generar_pdf_acta(incidencia, alumno, acta_data):
     c.drawString(2*cm, y - 3.5*cm,
                  f"Alumno: {acta_data.get('nombre_alumno','') or nombre_al}")
 
+    # Firma del apoderado
     firma_apo = acta_data.get("firma_apoderado_base64")
     if firma_apo:
         try:
@@ -2082,7 +2126,6 @@ def vista_detalle_incidencia(inc_id):
     st.write(f"**Requiere acta:** "
              f"{'Sí (' + (r['tipo_acta'] or '') + ')' if r['requiere_acta'] else 'No'}")
 
-    # ── Decomisos asociados ──
     decs = leer_df("""SELECT id,objeto,descripcion,fecha_decomiso,hora_decomiso,
                       fecha_limite,estado,fecha_devolucion,devuelto_a,retenido_por
                       FROM decomisos WHERE incidencia_id=?""", (inc_id,))
@@ -2120,10 +2163,11 @@ def vista_detalle_incidencia(inc_id):
                 if pdf_b64:
                     try:
                         pdf_bytes = base64.b64decode(pdf_b64)
+                        nombre_archivo = _nombre_archivo_acta(r, al)
                         st.download_button(
-                            "Descargar PDF del acta",
+                            f"📄 Descargar PDF — Acta #{act['id']}",
                             pdf_bytes,
-                            file_name=f"acta_{act['id']}.pdf",
+                            file_name=nombre_archivo,
                             mime="application/pdf",
                             key=f"pdf_det_{act['id']}")
                     except Exception:
@@ -2169,13 +2213,12 @@ def vista_detalle_incidencia(inc_id):
                     nombre_alumno.strip(), nombre_apoderado.strip(),
                     st.session_state["user"])
                 if ok:
-                    st.session_state.pop(f"_firma_actual_firma_det_al_{inc_id}", None)
-                    st.session_state.pop(f"_firma_actual_firma_det_apo_{inc_id}", None)
+                    limpiar_firma(f"firma_det_al_{inc_id}")
+                    limpiar_firma(f"firma_det_apo_{inc_id}")
                     guardar_toast(msg)
                     st.rerun()
                 else:
                     st.error(msg)
-
 # ─── VISTA ACTAS ────────────────────────────────────────────────────────
 def vista_actas():
     mostrar_toast_pendiente()
@@ -2197,15 +2240,15 @@ def vista_actas():
         with st.expander(f"{r['fecha']} - {r['alumno']} - "
                          f"{r['tipo']} ({r['n_actas']} acta(s))"):
             actas = actas_de_incidencia(r["incidencia_id"])
+            inc_full = _obtener_incidencia(r["incidencia_id"])
+            al_full = _obtener_alumno(inc_full["alumno_id"]) if inc_full else {}
             if actas.empty:
                 st.warning("Esta incidencia requiere acta pero aún no está firmada.")
-                inc = _obtener_incidencia(r["incidencia_id"])
-                al = _obtener_alumno(inc["alumno_id"])
-                nombre_al_default = (f"{al['apellido_paterno']} "
-                                     f"{al['apellido_materno'] or ''}, "
-                                     f"{al['nombres']}")
+                nombre_al_default = (f"{al_full['apellido_paterno']} "
+                                     f"{al_full['apellido_materno'] or ''}, "
+                                     f"{al_full['nombres']}")
                 st.write(f"**Alumno:** {nombre_al_default}")
-                st.write(f"**Apoderado:** {al.get('nombre_apoderado') or '-'}")
+                st.write(f"**Apoderado:** {al_full.get('nombre_apoderado') or '-'}")
                 st.markdown("---")
 
                 nombre_alumno = st.text_input(
@@ -2218,7 +2261,7 @@ def vista_actas():
 
                 nombre_apoderado = st.text_input(
                     "Nombre del apoderado firmante",
-                    value=al.get("nombre_apoderado") or "",
+                    value=al_full.get("nombre_apoderado") or "",
                     key=f"nom_apo_{r['incidencia_id']}")
                 st.caption("Firma del apoderado")
                 firma_apoderado = firma_widget(key=f"firma_apo_{r['incidencia_id']}")
@@ -2251,8 +2294,8 @@ def vista_actas():
                             nombre_alumno.strip(), nombre_apoderado.strip(),
                             st.session_state["user"])
                         if ok:
-                            st.session_state.pop(f"_firma_actual_firma_al_{r['incidencia_id']}", None)
-                            st.session_state.pop(f"_firma_actual_firma_apo_{r['incidencia_id']}", None)
+                            limpiar_firma(f"firma_al_{r['incidencia_id']}")
+                            limpiar_firma(f"firma_apo_{r['incidencia_id']}")
                             guardar_toast(msg)
                             st.rerun()
                         else:
@@ -2272,16 +2315,16 @@ def vista_actas():
                     if pdf_b64:
                         try:
                             pdf_bytes = base64.b64decode(pdf_b64)
+                            nombre_archivo = _nombre_archivo_acta(inc_full, al_full)
                             st.download_button(
-                                "Descargar PDF del acta",
+                                f"📄 Descargar PDF — Acta #{act['id']}",
                                 pdf_bytes,
-                                file_name=f"acta_{act['id']}.pdf",
+                                file_name=nombre_archivo,
                                 mime="application/pdf",
                                 key=f"pdf_acta_{act['id']}")
                         except Exception as e:
                             st.warning(f"No se pudo cargar el PDF: {e}")
                     st.markdown("---")
-
 # ─── VISTA DECOMISOS (general) ──────────────────────────────────────────
 def vista_decomisos():
     mostrar_toast_pendiente()
