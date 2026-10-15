@@ -836,6 +836,7 @@ def escaner_widget(key="escaner"):
 def limpiar_escaner(key):
     st.session_state.pop(f"_qr_procesado_{key}", None)
     st.session_state.pop(f"_ult_qr_{key}", None)
+    st.session_state.pop(f"_scan_alumno_{key}", None)
 
 # ─── VISTAS: LOGIN, CUENTA, MENÚ ────────────────────────────────────────
 def vista_login():
@@ -1375,13 +1376,28 @@ def vista_escaner():
     st.markdown("---")
 
     key_scan = "scan_" + modo.lower().replace(" ", "_")
-    al = escaner_widget(key_scan)
+    key_alumno = f"_scan_alumno_{key_scan}"
+
+    # Recuperar alumno guardado entre reruns
+    al = st.session_state.get(key_alumno)
+
+    # Solo escanear si no hay alumno ya guardado para este modo
+    if not al:
+        al = escaner_widget(key_scan)
+        if al:
+            st.session_state[key_alumno] = al
+
     if not al:
         return
 
     st.success(f"✓ {al['nombres']} {al['apellido_paterno']} — "
                f"{al['grado'] or ''} {al['seccion'] or ''} — "
                f"DNI {mask_dni(al['dni'])}")
+
+    if st.button("🔄 Escanear otro alumno", key=f"reset_{key_scan}"):
+        st.session_state.pop(key_alumno, None)
+        limpiar_escaner(key_scan)
+        st.rerun()
 
     st.markdown("---")
 
@@ -1390,7 +1406,6 @@ def vista_escaner():
     else:
         _incidencia_inline(al, key_scan)
 
-
 def _perfil_inline(idal, key_scan):
     al = _obtener_alumno(idal)
     if not al:
@@ -1398,7 +1413,25 @@ def _perfil_inline(idal, key_scan):
     _render_alumno_perfil(al, compact=True, key_scan=key_scan)
 
 
-def _incidencia_inline(al, key_scan):
+
+
+def _parse_decomisos(texto):
+    """Parsea líneas 'objeto | fecha_limite | descripcion'."""
+    lista = []
+    for linea in texto.splitlines():
+        linea = linea.strip()
+        if not linea:
+            continue
+        partes = [p.strip() for p in linea.split("|")]
+        objeto = partes[0] if len(partes) > 0 else ""
+        fecha_lim = partes[1] if len(partes) > 1 else ""
+        desc = partes[2] if len(partes) > 2 else ""
+        # Validar fecha
+        if fecha_lim:
+            try:
+                datetime.strptime(fecha_lim, "%Y-%m-%d")
+            except ValueError:
+                fecha_lim = ""def _incidencia_inline(al, key_scan):
     st.subheader("Nueva incidencia")
     with st.form("form_inc_scan"):
         c1, c2 = st.columns(2)
@@ -1437,7 +1470,6 @@ def _incidencia_inline(al, key_scan):
                 requiere_acta, tipo_acta, st.session_state["user"])
             if not ok:
                 st.error(msg); return
-            # Procesar decomisos
             if requiere_decomiso and decomisos_txt.strip():
                 lista = _parse_decomisos(decomisos_txt)
                 if lista:
@@ -1445,27 +1477,11 @@ def _incidencia_inline(al, key_scan):
                                               st.session_state["user"])
                     if n:
                         msg += f" ({n} decomiso(s) registrado(s))"
+            # Limpiar alumno guardado y escáner
+            st.session_state.pop(f"_scan_alumno_{key_scan}", None)
             limpiar_escaner(key_scan)
             guardar_toast(msg, "ok")
             st.rerun()
-
-def _parse_decomisos(texto):
-    """Parsea líneas 'objeto | fecha_limite | descripcion'."""
-    lista = []
-    for linea in texto.splitlines():
-        linea = linea.strip()
-        if not linea:
-            continue
-        partes = [p.strip() for p in linea.split("|")]
-        objeto = partes[0] if len(partes) > 0 else ""
-        fecha_lim = partes[1] if len(partes) > 1 else ""
-        desc = partes[2] if len(partes) > 2 else ""
-        # Validar fecha
-        if fecha_lim:
-            try:
-                datetime.strptime(fecha_lim, "%Y-%m-%d")
-            except ValueError:
-                fecha_lim = ""
         lista.append({"objeto": objeto, "fecha_limite": fecha_lim,
                       "descripcion": desc})
     return lista
@@ -1499,13 +1515,15 @@ def _render_alumno_perfil(al, compact=False, key_scan=None):
             if st.button("Ver perfil completo", type="primary",
                          use_container_width=True, key="ver_full_perfil"):
                 st.session_state["alumno_perfil_id"] = idal
+                # Cambiar menú a "Alumnos" para que se muestre el perfil
+                st.session_state["menu"] = "Alumnos"
                 if key_scan:
+                    st.session_state.pop(f"_scan_alumno_{key_scan}", None)
                     limpiar_escaner(key_scan)
                 st.rerun()
         with c2:
             if st.button("Registrar incidencia", use_container_width=True,
                          key="registrar_inc"):
-                st.session_state["_inc_desde_scan"] = True
                 st.rerun()
         return
 
