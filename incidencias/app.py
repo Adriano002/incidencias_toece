@@ -931,6 +931,7 @@ def menu_lateral():
     u = st.session_state["user"]
     rol = u["rol"]
     opciones = obtener_opciones_por_rol(u)
+
     with st.sidebar:
         inicial = (u["nombres"] or "?")[0].upper()
         st.markdown(
@@ -939,14 +940,20 @@ def menu_lateral():
             f'<div class="nombre">{u["nombres"]}</div>'
             f'<div class="rol">{rol}</div>'
             f'</div>', unsafe_allow_html=True)
+
+        # ── Aplicar cambio de menú pendiente ANTES de crear el radio ──
+        pendiente = st.session_state.pop("_ir_a_menu", None)
+        if pendiente and pendiente in opciones:
+            st.session_state["menu"] = pendiente
+
         if "menu" not in st.session_state or st.session_state["menu"] not in opciones:
             st.session_state["menu"] = opciones[0]
+
         op = st.radio("Menu", opciones, key="menu", label_visibility="collapsed")
         st.markdown("---")
         if st.button("Cerrar sesión", use_container_width=True):
             cerrar_sesion(); st.rerun()
     return op
-
 # ─── ALUMNOS CRUD ───────────────────────────────────────────────────────
 def buscar_alumnos(texto="", grado="", seccion="", dni="", limite=300):
     q = """SELECT id,dni,nombres,apellido_paterno,apellido_materno,
@@ -1516,8 +1523,8 @@ def _render_alumno_perfil(al, compact=False, key_scan=None):
             if st.button("Ver perfil completo", type="primary",
                          use_container_width=True, key="ver_full_perfil"):
                 st.session_state["alumno_perfil_id"] = idal
-                # Cambiar menú a "Alumnos" para que se muestre el perfil
-                st.session_state["menu"] = "Alumnos"
+                # Bandera que se aplicará al inicio del próximo rerun
+                st.session_state["_ir_a_menu"] = "Alumnos"
                 if key_scan:
                     st.session_state.pop(f"_scan_alumno_{key_scan}", None)
                     limpiar_escaner(key_scan)
