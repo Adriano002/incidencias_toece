@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
-
+from firma_component import firma_widget, firma_guardada, limpiar_firma, tiene_firma
 import pandas as pd
 import qrcode
 import streamlit as st
