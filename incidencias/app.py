@@ -1431,7 +1431,12 @@ def _parse_decomisos(texto):
             try:
                 datetime.strptime(fecha_lim, "%Y-%m-%d")
             except ValueError:
-                fecha_lim = ""def _incidencia_inline(al, key_scan):
+                fecha_lim = ""
+        lista.append({"objeto": objeto, "fecha_limite": fecha_lim,
+                      "descripcion": desc})
+    return lista
+
+def _incidencia_inline(al, key_scan):
     st.subheader("Nueva incidencia")
     with st.form("form_inc_scan"):
         c1, c2 = st.columns(2)
@@ -1477,14 +1482,10 @@ def _parse_decomisos(texto):
                                               st.session_state["user"])
                     if n:
                         msg += f" ({n} decomiso(s) registrado(s))"
-            # Limpiar alumno guardado y escáner
             st.session_state.pop(f"_scan_alumno_{key_scan}", None)
             limpiar_escaner(key_scan)
             guardar_toast(msg, "ok")
             st.rerun()
-        lista.append({"objeto": objeto, "fecha_limite": fecha_lim,
-                      "descripcion": desc})
-    return lista
 
 # ─── PERFIL DEL ALUMNO PROFESIONAL ──────────────────────────────────────
 def _render_alumno_perfil(al, compact=False, key_scan=None):
