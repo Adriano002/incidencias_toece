@@ -1711,14 +1711,23 @@ def vista_alumnos():
         _render_alumno_perfil(al)
         return
 
-    # FIX: radio controlable
+    # FIX: key separada para controlar la vista
+    if "al_vista_actual" not in st.session_state:
+        st.session_state["al_vista_actual"] = "Buscar"
+
+    opciones = ["Buscar", "Crear", "Importar Excel"]
+    idx = opciones.index(st.session_state["al_vista_actual"]) \
+          if st.session_state["al_vista_actual"] in opciones else 0
+
     vista_sel = st.radio(
         "Vista",
-        ["Buscar", "Crear", "Importar Excel"],
+        opciones,
+        index=idx,
         horizontal=True,
-        key="al_vista",
+        key="al_vista_radio",
         label_visibility="collapsed"
     )
+    st.session_state["al_vista_actual"] = vista_sel
 
     if vista_sel == "Buscar":
         _al_buscar()
@@ -1799,12 +1808,69 @@ def _al_crear():
                                     email_apo.strip(),
                                     st.session_state["user"])
             if ok:
-                # FIX: mantener la vista "Crear" activa
-                st.session_state["al_vista"] = "Crear"
+                # FIX: mantener "Crear" activa
+                st.session_state["al_vista_actual"] = "Crear"
                 guardar_toast(msg)
                 st.rerun()
             else:
                 st.error(msg)
+
+
+def _al_importar():
+    st.subheader("Importar alumnos desde Excel")
+    st.caption("Columnas: DNI, Nombres, Apellido Paterno, Apellido Materno, "
+               "Grado, Sección, Turno, Apoderado, Teléfono.")
+    arch = st.file_uploader("Sube el Excel", type=["xlsx", "xls"],
+                             key="al_imp")
+    if arch:
+        df = pd.read_excel(arch)
+        st.write(f"{len(df)} filas detectadas.")
+        cols = list(df.columns)
+        with st.form("mapeo_al"):
+            c1, c2 = st.columns(2)
+            with c1:
+                m_dni = st.selectbox("DNI *", cols)
+                m_nom = st.selectbox("Nombres *", cols)
+                m_pat = st.selectbox("Apellido Paterno *", cols)
+                m_mat = st.selectbox("Apellido Materno", [""] + cols)
+            with c2:
+                m_gra = st.selectbox("Grado", [""] + cols)
+                m_sec = st.selectbox("Sección", [""] + cols)
+                m_tur = st.selectbox("Turno", [""] + cols)
+                m_apo = st.selectbox("Apoderado", [""] + cols)
+                m_tel = st.selectbox("Teléfono", [""] + cols)
+            validar = st.form_submit_button("Validar", type="primary")
+        if validar:
+            mapeo = {"dni": m_dni, "nombres": m_nom,
+                     "apellido_paterno": m_pat,
+                     "apellido_materno": m_mat, "grado": m_gra,
+                     "seccion": m_sec, "turno": m_tur,
+                     "apoderado_nombre": m_apo,
+                     "apoderado_telefono": m_tel}
+            val, errs, res = validar_importacion_alumnos(df, mapeo)
+            st.session_state["_al_val"] = val
+            st.session_state["_al_err"] = errs
+            st.session_state["_al_res"] = res
+        if "_al_res" in st.session_state:
+            r = st.session_state["_al_res"]
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total", r["total"])
+            c2.metric("Válidas", r["validas"])
+            c3.metric("Errores", r["errores"])
+            if st.session_state["_al_err"]:
+                with st.expander("Errores"):
+                    st.dataframe(pd.DataFrame(st.session_state["_al_err"]),
+                                 use_container_width=True)
+            if st.session_state["_al_val"]:
+                if pedir_password_critica("al_imp", "Importar válidas"):
+                    ins, reac, errs = insertar_alumnos_validos(
+                        st.session_state["_al_val"])
+                    for k in ["_al_val", "_al_err", "_al_res"]:
+                        st.session_state.pop(k, None)
+                    # FIX: mantener "Importar Excel" activa
+                    st.session_state["al_vista_actual"] = "Importar Excel"
+                    guardar_toast(f"{ins} nuevos, {reac} actualizados.")
+                    st.rerun()
 
 
 def _al_importar():
@@ -1970,14 +2036,23 @@ def vista_incidencias():
     if pid:
         vista_detalle_incidencia(pid); return
 
-    # FIX: radio controlable para mantener la vista activa
+    # FIX: key separada para controlar la vista
+    if "inc_vista_actual" not in st.session_state:
+        st.session_state["inc_vista_actual"] = "Listar"
+
+    opciones = ["Listar", "Crear"]
+    idx = opciones.index(st.session_state["inc_vista_actual"]) \
+          if st.session_state["inc_vista_actual"] in opciones else 0
+
     vista_sel = st.radio(
         "Vista",
-        ["Listar", "Crear"],
+        opciones,
+        index=idx,
         horizontal=True,
-        key="inc_vista",
+        key="inc_vista_radio",
         label_visibility="collapsed"
     )
+    st.session_state["inc_vista_actual"] = vista_sel
 
     if vista_sel == "Listar":
         _inc_listar()
@@ -2109,11 +2184,10 @@ def _inc_crear():
                         msg += f" ({n} decomiso(s) registrado(s))"
                     for e in errs_batch:
                         st.warning(e)
-            # FIX: mantener la vista "Crear" activa
-            st.session_state["inc_vista"] = "Crear"
+            # FIX: mantener "Crear" activa
+            st.session_state["inc_vista_actual"] = "Crear"
             guardar_toast(msg)
             st.rerun()
-
 def vista_detalle_incidencia(inc_id):
     mostrar_toast_pendiente()
     if st.button("← Volver a incidencias", key="volver_inc"):
@@ -2365,14 +2439,23 @@ def vista_decomisos():
     actualizar_vencidos()
     usuario = st.session_state["user"]
 
-    # FIX: radio controlable
+    # FIX: key separada para controlar la vista
+    if "dec_vista_actual" not in st.session_state:
+        st.session_state["dec_vista_actual"] = "Activos"
+
+    opciones = ["Activos", "Todos", "Registrar nuevo"]
+    idx = opciones.index(st.session_state["dec_vista_actual"]) \
+          if st.session_state["dec_vista_actual"] in opciones else 0
+
     vista_sel = st.radio(
         "Vista",
-        ["Activos", "Todos", "Registrar nuevo"],
+        opciones,
+        index=idx,
         horizontal=True,
-        key="dec_vista",
+        key="dec_vista_radio",
         label_visibility="collapsed"
     )
+    st.session_state["dec_vista_actual"] = vista_sel
 
     if vista_sel == "Activos":
         _dec_activos(usuario)
@@ -2435,6 +2518,69 @@ def _dec_activos(usuario):
                             st.rerun()
                         else:
                             st.error(msg)
+
+
+def _dec_todos():
+    st.subheader("Todos los decomisos")
+    df = listar_decomisos_todos()
+    if df.empty:
+        st.info("Sin decomisos registrados.")
+    else:
+        df_show = df.copy()
+        st.write(f"**{len(df)} decomiso(s).**")
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+
+def _dec_registrar(usuario):
+    st.subheader("Registrar decomiso manualmente")
+    st.caption("Selecciona un alumno y agrega uno o varios objetos.")
+    al = buscar_alumno_widget("dec_nuevo")
+    if not al:
+        return
+    st.markdown("---")
+    st.markdown(f"**{al['nombres']} {al['apellido_paterno']}** — "
+                f"{al['grado'] or ''} {al['seccion'] or ''} — "
+                f"DNI {mask_dni(al['dni'])}")
+
+    with st.form("form_decomiso"):
+        st.markdown("**Objetos a decomisar**")
+        st.caption("Agrega hasta 5 objetos por registro.")
+        objetos = []
+        for i in range(5):
+            c1, c2, c3 = st.columns([3, 2, 4])
+            with c1:
+                obj = st.text_input(f"Objeto {i+1}",
+                                     key=f"dec_obj_{i}",
+                                     placeholder="Celular, cartera...")
+            with c2:
+                f_lim = st.date_input(f"Fecha límite {i+1}",
+                                       value=ahora().date() + timedelta(days=3),
+                                       key=f"dec_fl_{i}")
+            with c3:
+                desc = st.text_input(f"Descripción {i+1}",
+                                      key=f"dec_desc_{i}",
+                                      placeholder="Marca, color, etc.")
+            if obj.strip():
+                objetos.append({
+                    "objeto": obj.strip(),
+                    "fecha_limite": f_lim.strftime("%Y-%m-%d"),
+                    "descripcion": desc.strip(),
+                })
+        sub = st.form_submit_button("Registrar decomisos", type="primary")
+
+    if sub:
+        if not objetos:
+            st.error("Agrega al menos un objeto.")
+        else:
+            n, errs_batch = crear_decomisos_batch(al["id"], None, objetos,
+                                                   usuario)
+            if n:
+                # FIX: mantener "Registrar nuevo" activa
+                st.session_state["dec_vista_actual"] = "Registrar nuevo"
+                guardar_toast(f"{n} decomiso(s) registrado(s).")
+                st.rerun()
+            for e in errs_batch:
+                st.warning(e)
 
 
 def _dec_todos():
