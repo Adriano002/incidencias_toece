@@ -1710,136 +1710,158 @@ def vista_alumnos():
             st.session_state.pop("alumno_perfil_id", None); st.rerun()
         _render_alumno_perfil(al)
         return
-    tabs = st.tabs(["Buscar", "Crear", "Importar Excel"])
 
-    with tabs[0]:
-        st.subheader("Buscar alumno")
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            f_nombre = st.text_input("Nombre o apellido", key="al_f_nom")
-        with c2:
-            f_dni = st.text_input("DNI", key="al_f_dni")
-        with c3:
-            grados = obtener_grados()
-            f_grado = st.selectbox("Grado", grados, key="al_f_grado")
-        with c4:
-            secciones = obtener_secciones(f_grado)
-            f_seccion = st.selectbox("Sección", secciones, key="al_f_sec")
-        if st.button("Buscar", type="primary", key="al_buscar_btn"):
-            st.session_state["_al_buscar"] = True
-        if st.session_state.get("_al_buscar"):
-            df = buscar_alumnos(f_nombre, f_grado, f_seccion, f_dni, limite=500)
-            st.write(f"**{len(df)} resultados**")
-            if df.empty:
-                st.info("Sin resultados.")
-            else:
-                for _, al in df.iterrows():
-                    nombre = (al['apellido_paterno'] + " " +
-                              (al['apellido_materno'] or "") + ", " + al['nombres'])
-                    c1, c2 = st.columns([5, 1])
-                    c1.markdown(
-                        f"**{nombre}** &nbsp; — &nbsp; "
-                        f"<span style='color:{COLOR_AZUL};font-weight:700;'>"
-                        f"{al['grado'] or ''} {al['seccion'] or ''}</span> &nbsp;—&nbsp; "
-                        f"DNI {mask_dni(al['dni'])}",
-                        unsafe_allow_html=True)
-                    if c2.button("Ver perfil", key="ver_al_" + str(al['id'])):
-                        st.session_state["alumno_perfil_id"] = al["id"]; st.rerun()
+    # FIX: radio controlable
+    vista_sel = st.radio(
+        "Vista",
+        ["Buscar", "Crear", "Importar Excel"],
+        horizontal=True,
+        key="al_vista",
+        label_visibility="collapsed"
+    )
 
-    with tabs[1]:
-        st.subheader("Crear alumno")
-        c1, c2 = st.columns(2)
-        with c1:
-            dni = st.text_input("DNI * (8 dígitos)", max_chars=8, key="nu_dni")
-            nom = st.text_input("Nombres *", key="nu_nom")
-            pat = st.text_input("Apellido Paterno *", key="nu_pat")
-            mat = st.text_input("Apellido Materno", key="nu_mat")
-        with c2:
-            grado = st.text_input("Grado", key="nu_grado")
-            seccion = st.text_input("Sección", key="nu_sec")
-            turno = st.selectbox("Turno", ["", "Mañana", "Tarde"], key="nu_tur")
-            fecha_nac = st.date_input("Fecha de nacimiento", value=None,
-                                       key="nu_fnac")
-        c3, c4 = st.columns(2)
-        with c3:
-            apo = st.text_input("Apoderado", key="nu_apo")
-            tel = st.text_input("Teléfono apoderado", key="nu_tel")
-        with c4:
-            email_apo = st.text_input("Email apoderado", key="nu_email")
-            direccion = st.text_input("Dirección", key="nu_dir")
-        if st.button("Crear alumno", type="primary"):
-            if not dni or not nom or not pat:
-                st.error("Completa DNI, nombres y apellido paterno.")
-            elif not re.fullmatch(r"\d{8}", dni.strip()):
-                st.error("DNI inválido.")
+    if vista_sel == "Buscar":
+        _al_buscar()
+    elif vista_sel == "Crear":
+        _al_crear()
+    else:
+        _al_importar()
+
+
+def _al_buscar():
+    st.subheader("Buscar alumno")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        f_nombre = st.text_input("Nombre o apellido", key="al_f_nom")
+    with c2:
+        f_dni = st.text_input("DNI", key="al_f_dni")
+    with c3:
+        grados = obtener_grados()
+        f_grado = st.selectbox("Grado", grados, key="al_f_grado")
+    with c4:
+        secciones = obtener_secciones(f_grado)
+        f_seccion = st.selectbox("Sección", secciones, key="al_f_sec")
+    if st.button("Buscar", type="primary", key="al_buscar_btn"):
+        st.session_state["_al_buscar"] = True
+    if st.session_state.get("_al_buscar"):
+        df = buscar_alumnos(f_nombre, f_grado, f_seccion, f_dni, limite=500)
+        st.write(f"**{len(df)} resultados**")
+        if df.empty:
+            st.info("Sin resultados.")
+        else:
+            for _, al in df.iterrows():
+                nombre = (al['apellido_paterno'] + " " +
+                          (al['apellido_materno'] or "") + ", " + al['nombres'])
+                c1, c2 = st.columns([5, 1])
+                c1.markdown(
+                    f"**{nombre}** &nbsp; — &nbsp; "
+                    f"<span style='color:{COLOR_AZUL};font-weight:700;'>"
+                    f"{al['grado'] or ''} {al['seccion'] or ''}</span> &nbsp;—&nbsp; "
+                    f"DNI {mask_dni(al['dni'])}",
+                    unsafe_allow_html=True)
+                if c2.button("Ver perfil", key="ver_al_" + str(al['id'])):
+                    st.session_state["alumno_perfil_id"] = al["id"]; st.rerun()
+
+
+def _al_crear():
+    st.subheader("Crear alumno")
+    c1, c2 = st.columns(2)
+    with c1:
+        dni = st.text_input("DNI * (8 dígitos)", max_chars=8, key="nu_dni")
+        nom = st.text_input("Nombres *", key="nu_nom")
+        pat = st.text_input("Apellido Paterno *", key="nu_pat")
+        mat = st.text_input("Apellido Materno", key="nu_mat")
+    with c2:
+        grado = st.text_input("Grado", key="nu_grado")
+        seccion = st.text_input("Sección", key="nu_sec")
+        turno = st.selectbox("Turno", ["", "Mañana", "Tarde"], key="nu_tur")
+        fecha_nac = st.date_input("Fecha de nacimiento", value=None,
+                                   key="nu_fnac")
+    c3, c4 = st.columns(2)
+    with c3:
+        apo = st.text_input("Apoderado", key="nu_apo")
+        tel = st.text_input("Teléfono apoderado", key="nu_tel")
+    with c4:
+        email_apo = st.text_input("Email apoderado", key="nu_email")
+        direccion = st.text_input("Dirección", key="nu_dir")
+    if st.button("Crear alumno", type="primary"):
+        if not dni or not nom or not pat:
+            st.error("Completa DNI, nombres y apellido paterno.")
+        elif not re.fullmatch(r"\d{8}", dni.strip()):
+            st.error("DNI inválido.")
+        else:
+            fn = fecha_nac.strftime("%Y-%m-%d") if fecha_nac else None
+            ok, msg = crear_alumno(dni.strip(), nom.strip(), pat.strip(),
+                                    mat.strip(), grado.strip(),
+                                    seccion.strip(), turno,
+                                    apo.strip(), tel.strip(),
+                                    direccion.strip(), fn,
+                                    email_apo.strip(),
+                                    st.session_state["user"])
+            if ok:
+                # FIX: mantener la vista "Crear" activa
+                st.session_state["al_vista"] = "Crear"
+                guardar_toast(msg)
+                st.rerun()
             else:
-                fn = fecha_nac.strftime("%Y-%m-%d") if fecha_nac else None
-                ok, msg = crear_alumno(dni.strip(), nom.strip(), pat.strip(),
-                                        mat.strip(), grado.strip(),
-                                        seccion.strip(), turno,
-                                        apo.strip(), tel.strip(),
-                                        direccion.strip(), fn,
-                                        email_apo.strip(),
-                                        st.session_state["user"])
-                if ok:
-                    guardar_toast(msg)
+                st.error(msg)
+
+
+def _al_importar():
+    st.subheader("Importar alumnos desde Excel")
+    st.caption("Columnas: DNI, Nombres, Apellido Paterno, Apellido Materno, "
+               "Grado, Sección, Turno, Apoderado, Teléfono.")
+    arch = st.file_uploader("Sube el Excel", type=["xlsx", "xls"],
+                             key="al_imp")
+    if arch:
+        df = pd.read_excel(arch)
+        st.write(f"{len(df)} filas detectadas.")
+        cols = list(df.columns)
+        with st.form("mapeo_al"):
+            c1, c2 = st.columns(2)
+            with c1:
+                m_dni = st.selectbox("DNI *", cols)
+                m_nom = st.selectbox("Nombres *", cols)
+                m_pat = st.selectbox("Apellido Paterno *", cols)
+                m_mat = st.selectbox("Apellido Materno", [""] + cols)
+            with c2:
+                m_gra = st.selectbox("Grado", [""] + cols)
+                m_sec = st.selectbox("Sección", [""] + cols)
+                m_tur = st.selectbox("Turno", [""] + cols)
+                m_apo = st.selectbox("Apoderado", [""] + cols)
+                m_tel = st.selectbox("Teléfono", [""] + cols)
+            validar = st.form_submit_button("Validar", type="primary")
+        if validar:
+            mapeo = {"dni": m_dni, "nombres": m_nom,
+                     "apellido_paterno": m_pat,
+                     "apellido_materno": m_mat, "grado": m_gra,
+                     "seccion": m_sec, "turno": m_tur,
+                     "apoderado_nombre": m_apo,
+                     "apoderado_telefono": m_tel}
+            val, errs, res = validar_importacion_alumnos(df, mapeo)
+            st.session_state["_al_val"] = val
+            st.session_state["_al_err"] = errs
+            st.session_state["_al_res"] = res
+        if "_al_res" in st.session_state:
+            r = st.session_state["_al_res"]
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total", r["total"])
+            c2.metric("Válidas", r["validas"])
+            c3.metric("Errores", r["errores"])
+            if st.session_state["_al_err"]:
+                with st.expander("Errores"):
+                    st.dataframe(pd.DataFrame(st.session_state["_al_err"]),
+                                 use_container_width=True)
+            if st.session_state["_al_val"]:
+                if pedir_password_critica("al_imp", "Importar válidas"):
+                    ins, reac, errs = insertar_alumnos_validos(
+                        st.session_state["_al_val"])
+                    for k in ["_al_val", "_al_err", "_al_res"]:
+                        st.session_state.pop(k, None)
+                    # FIX: mantener la vista "Importar Excel" activa
+                    st.session_state["al_vista"] = "Importar Excel"
+                    guardar_toast(f"{ins} nuevos, {reac} actualizados.")
                     st.rerun()
-                else:
-                    st.error(msg)
-
-    with tabs[2]:
-        st.subheader("Importar alumnos desde Excel")
-        st.caption("Columnas: DNI, Nombres, Apellido Paterno, Apellido Materno, "
-                   "Grado, Sección, Turno, Apoderado, Teléfono.")
-        arch = st.file_uploader("Sube el Excel", type=["xlsx", "xls"],
-                                 key="al_imp")
-        if arch:
-            df = pd.read_excel(arch)
-            st.write(f"{len(df)} filas detectadas.")
-            cols = list(df.columns)
-            with st.form("mapeo_al"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    m_dni = st.selectbox("DNI *", cols)
-                    m_nom = st.selectbox("Nombres *", cols)
-                    m_pat = st.selectbox("Apellido Paterno *", cols)
-                    m_mat = st.selectbox("Apellido Materno", [""] + cols)
-                with c2:
-                    m_gra = st.selectbox("Grado", [""] + cols)
-                    m_sec = st.selectbox("Sección", [""] + cols)
-                    m_tur = st.selectbox("Turno", [""] + cols)
-                    m_apo = st.selectbox("Apoderado", [""] + cols)
-                    m_tel = st.selectbox("Teléfono", [""] + cols)
-                validar = st.form_submit_button("Validar", type="primary")
-            if validar:
-                mapeo = {"dni": m_dni, "nombres": m_nom,
-                         "apellido_paterno": m_pat,
-                         "apellido_materno": m_mat, "grado": m_gra,
-                         "seccion": m_sec, "turno": m_tur,
-                         "apoderado_nombre": m_apo,
-                         "apoderado_telefono": m_tel}
-                val, errs, res = validar_importacion_alumnos(df, mapeo)
-                st.session_state["_al_val"] = val
-                st.session_state["_al_err"] = errs
-                st.session_state["_al_res"] = res
-            if "_al_res" in st.session_state:
-                r = st.session_state["_al_res"]
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Total", r["total"])
-                c2.metric("Válidas", r["validas"])
-                c3.metric("Errores", r["errores"])
-                if st.session_state["_al_err"]:
-                    with st.expander("Errores"):
-                        st.dataframe(pd.DataFrame(st.session_state["_al_err"]),
-                                     use_container_width=True)
-                if st.session_state["_al_val"]:
-                    if pedir_password_critica("al_imp", "Importar válidas"):
-                        ins, reac, errs = insertar_alumnos_validos(
-                            st.session_state["_al_val"])
-                        for k in ["_al_val", "_al_err", "_al_res"]:
-                            st.session_state.pop(k, None)
-                        guardar_toast(f"{ins} nuevos, {reac} actualizados.")
-                        st.rerun()
 
 def validar_importacion_alumnos(df, mapeo):
     errs, val = [], []
@@ -1947,133 +1969,150 @@ def vista_incidencias():
     pid = st.session_state.get("incidencia_ver_id")
     if pid:
         vista_detalle_incidencia(pid); return
-    tabs = st.tabs(["Listar", "Crear"])
 
-    with tabs[0]:
-        c1, c2, c3 = st.columns([2, 2, 3])
-        with c1:
-            filtro_estado = st.selectbox("Estado", ["Todos"] + ESTADOS,
-                                          key="inc_f_estado")
-        with c2:
-            filtro_tipo = st.selectbox("Tipo", ["Todos"] + TIPOS_INCIDENCIA,
-                                        key="inc_f_tipo")
-        with c3:
-            filtro_texto = st.text_input("Buscar alumno",
-                                          key="inc_f_texto",
-                                          placeholder="Nombre o DNI")
-        q = """SELECT i.id, i.fecha, i.hora, i.tipo, i.categoria, i.estado,
-               i.requiere_acta, i.tipo_acta, i.descripcion,
-               al.id AS alumno_id,
-               al.apellido_paterno||' '||COALESCE(al.apellido_materno,'')||', '||al.nombres AS alumno,
-               al.grado, al.seccion
-               FROM incidencias i JOIN alumnos al ON i.alumno_id=al.id WHERE 1=1"""
-        p = []
-        if filtro_estado != "Todos":
-            q += " AND i.estado=?"; p.append(filtro_estado)
-        if filtro_tipo != "Todos":
-            q += " AND i.tipo=?"; p.append(filtro_tipo)
-        if filtro_texto.strip():
-            pat = f"%{filtro_texto.strip()}%"
-            q += " AND (al.nombres LIKE ? OR al.apellido_paterno LIKE ? OR al.dni LIKE ?)"
-            p += [pat, pat, pat]
-        q += " ORDER BY i.fecha DESC, i.hora DESC LIMIT 500"
-        df = leer_df(q, p)
-        st.write(f"**{len(df)} incidencias**")
-        if df.empty:
-            st.info("Sin incidencias.")
-        else:
-            for _, r in df.iterrows():
-                tipo_cls = {"Leve": "leve", "Grave": "grave",
-                            "Muy grave": "muy-grave"}.get(r["tipo"], "")
-                estado_cls = {"Resuelta": "resuelta", "En proceso": "proceso",
-                              "Archivada": "archivada"}.get(r["estado"], "")
-                st.markdown(f"""
-                <div class="inc-card {tipo_cls}">
-                    <div class="inc-head">
-                        <span class="inc-tipo">{r['alumno']}</span>
-                        <span class="inc-estado {estado_cls}">{r['estado']}</span>
-                    </div>
-                    <div class="inc-meta">{r['fecha']} {r['hora']} — {r['grado'] or ''} {r['seccion'] or ''} — {r['tipo']} · {r['categoria'] or 'Sin categoría'}</div>
-                    <div class="inc-desc">{r['descripcion'][:180]}{'...' if len(r['descripcion']) > 180 else ''}</div>
+    # FIX: radio controlable para mantener la vista activa
+    vista_sel = st.radio(
+        "Vista",
+        ["Listar", "Crear"],
+        horizontal=True,
+        key="inc_vista",
+        label_visibility="collapsed"
+    )
+
+    if vista_sel == "Listar":
+        _inc_listar()
+    else:
+        _inc_crear()
+
+
+def _inc_listar():
+    c1, c2, c3 = st.columns([2, 2, 3])
+    with c1:
+        filtro_estado = st.selectbox("Estado", ["Todos"] + ESTADOS,
+                                      key="inc_f_estado")
+    with c2:
+        filtro_tipo = st.selectbox("Tipo", ["Todos"] + TIPOS_INCIDENCIA,
+                                    key="inc_f_tipo")
+    with c3:
+        filtro_texto = st.text_input("Buscar alumno",
+                                      key="inc_f_texto",
+                                      placeholder="Nombre o DNI")
+    q = """SELECT i.id, i.fecha, i.hora, i.tipo, i.categoria, i.estado,
+           i.requiere_acta, i.tipo_acta, i.descripcion,
+           al.id AS alumno_id,
+           al.apellido_paterno||' '||COALESCE(al.apellido_materno,'')||', '||al.nombres AS alumno,
+           al.grado, al.seccion
+           FROM incidencias i JOIN alumnos al ON i.alumno_id=al.id WHERE 1=1"""
+    p = []
+    if filtro_estado != "Todos":
+        q += " AND i.estado=?"; p.append(filtro_estado)
+    if filtro_tipo != "Todos":
+        q += " AND i.tipo=?"; p.append(filtro_tipo)
+    if filtro_texto.strip():
+        pat = f"%{filtro_texto.strip()}%"
+        q += " AND (al.nombres LIKE ? OR al.apellido_paterno LIKE ? OR al.dni LIKE ?)"
+        p += [pat, pat, pat]
+    q += " ORDER BY i.fecha DESC, i.hora DESC LIMIT 500"
+    df = leer_df(q, p)
+    st.write(f"**{len(df)} incidencias**")
+    if df.empty:
+        st.info("Sin incidencias.")
+    else:
+        for _, r in df.iterrows():
+            tipo_cls = {"Leve": "leve", "Grave": "grave",
+                        "Muy grave": "muy-grave"}.get(r["tipo"], "")
+            estado_cls = {"Resuelta": "resuelta", "En proceso": "proceso",
+                          "Archivada": "archivada"}.get(r["estado"], "")
+            st.markdown(f"""
+            <div class="inc-card {tipo_cls}">
+                <div class="inc-head">
+                    <span class="inc-tipo">{r['alumno']}</span>
+                    <span class="inc-estado {estado_cls}">{r['estado']}</span>
                 </div>
-                """, unsafe_allow_html=True)
-                cc1, cc2 = st.columns([4, 1])
-                with cc2:
-                    if st.button("Ver detalle", key="ver_inc_" + str(r['id']),
-                                 use_container_width=True):
-                        st.session_state["incidencia_ver_id"] = r["id"]; st.rerun()
+                <div class="inc-meta">{r['fecha']} {r['hora']} — {r['grado'] or ''} {r['seccion'] or ''} — {r['tipo']} · {r['categoria'] or 'Sin categoría'}</div>
+                <div class="inc-desc">{r['descripcion'][:180]}{'...' if len(r['descripcion']) > 180 else ''}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            cc1, cc2 = st.columns([4, 1])
+            with cc2:
+                if st.button("Ver detalle", key="ver_inc_" + str(r['id']),
+                             use_container_width=True):
+                    st.session_state["incidencia_ver_id"] = r["id"]; st.rerun()
 
-    with tabs[1]:
-        st.subheader("Nueva incidencia")
-        st.caption("Para escanear QR, ve a 'Escaner QR' en el menú lateral.")
-        al = buscar_alumno_widget("inc_nueva")
-        if not al:
-            return
+
+def _inc_crear():
+    st.subheader("Nueva incidencia")
+    st.caption("Para escanear QR, ve a 'Escaner QR' en el menú lateral.")
+    al = buscar_alumno_widget("inc_nueva")
+    if not al:
+        return
+    st.markdown("---")
+    st.markdown(f"""
+    <div class="card">
+        <div class="info-line"><span class="info-label">Alumno</span>
+            <span class="info-valor">{al['nombres']} {al['apellido_paterno']} {al['apellido_materno'] or ''}</span></div>
+        <div class="info-line"><span class="info-label">Grado/Sección</span>
+            <span class="info-valor">{al['grado'] or ''} {al['seccion'] or ''}</span></div>
+        <div class="info-line"><span class="info-label">DNI</span>
+            <span class="info-valor">{mask_dni(al['dni'])}</span></div>
+    </div>
+    """, unsafe_allow_html=True)
+    with st.form("form_inc"):
+        c1, c2 = st.columns(2)
+        with c1:
+            fecha = st.date_input("Fecha", value=ahora().date(), key="inc_fecha")
+            tipo = st.selectbox("Tipo", TIPOS_INCIDENCIA, key="inc_tipo")
+        with c2:
+            categoria = st.selectbox("Categoría", CATEGORIAS, key="inc_cat")
+            reportado = st.text_input(
+                "Reportado por",
+                value=st.session_state["user"]["nombres"],
+                key="inc_rep")
+        descripcion = st.text_area("Descripción *", key="inc_desc",
+                                    placeholder="Describe lo ocurrido")
         st.markdown("---")
-        st.markdown(f"""
-        <div class="card">
-            <div class="info-line"><span class="info-label">Alumno</span>
-                <span class="info-valor">{al['nombres']} {al['apellido_paterno']} {al['apellido_materno'] or ''}</span></div>
-            <div class="info-line"><span class="info-label">Grado/Sección</span>
-                <span class="info-valor">{al['grado'] or ''} {al['seccion'] or ''}</span></div>
-            <div class="info-line"><span class="info-label">DNI</span>
-                <span class="info-valor">{mask_dni(al['dni'])}</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-        with st.form("form_inc"):
-            c1, c2 = st.columns(2)
-            with c1:
-                fecha = st.date_input("Fecha", value=ahora().date(), key="inc_fecha")
-                tipo = st.selectbox("Tipo", TIPOS_INCIDENCIA, key="inc_tipo")
-            with c2:
-                categoria = st.selectbox("Categoría", CATEGORIAS, key="inc_cat")
-                reportado = st.text_input(
-                    "Reportado por",
-                    value=st.session_state["user"]["nombres"],
-                    key="inc_rep")
-            descripcion = st.text_area("Descripción *", key="inc_desc",
-                                        placeholder="Describe lo ocurrido")
-            st.markdown("---")
-            requiere_acta = st.checkbox("¿Requiere acta?", key="inc_req_acta")
-            tipo_acta = None
-            if requiere_acta:
-                tipo_acta = st.radio(
-                    "Tipo de acta",
-                    ["alumno", "apoderado", "alumno_apoderado"],
-                    key="inc_tipo_acta", horizontal=True)
-            requiere_decomiso = st.checkbox("¿Requiere decomiso?", key="inc_req_dec")
-            decomisos_txt = ""
-            if requiere_decomiso:
-                st.caption("Escribe UN objeto por línea. Formato:")
-                st.caption("**objeto | fecha_límite (YYYY-MM-DD) | descripción**")
-                st.caption("Ejemplo: `Celular | 2026-01-20 | Samsung negro`")
-                decomisos_txt = st.text_area("Objetos decomisados",
-                                              key="inc_dec_txt", height=120)
-            sub = st.form_submit_button("Registrar incidencia", type="primary")
-        if sub:
-            if not descripcion.strip():
-                st.error("La descripción es obligatoria.")
-            else:
-                ok, msg, inc_id = crear_incidencia(
-                    al["id"], fecha.strftime("%Y-%m-%d"), tipo, categoria,
-                    descripcion.strip(), reportado.strip(),
-                    requiere_acta, tipo_acta, st.session_state["user"])
-                if not ok:
-                    st.error(msg); return
-                if requiere_decomiso and decomisos_txt.strip():
-                    lista, errores = _parse_decomisos(decomisos_txt)
-                    if errores:
-                        for e in errores:
-                            st.warning(e)
-                    if lista:
-                        n, errs_batch = crear_decomisos_batch(al["id"], inc_id, lista,
-                                                              st.session_state["user"])
-                        if n:
-                            msg += f" ({n} decomiso(s) registrado(s))"
-                        for e in errs_batch:
-                            st.warning(e)
-                guardar_toast(msg)
-                st.rerun()
+        requiere_acta = st.checkbox("¿Requiere acta?", key="inc_req_acta")
+        tipo_acta = None
+        if requiere_acta:
+            tipo_acta = st.radio(
+                "Tipo de acta",
+                ["alumno", "apoderado", "alumno_apoderado"],
+                key="inc_tipo_acta", horizontal=True)
+        requiere_decomiso = st.checkbox("¿Requiere decomiso?", key="inc_req_dec")
+        decomisos_txt = ""
+        if requiere_decomiso:
+            st.caption("Escribe UN objeto por línea. Formato:")
+            st.caption("**objeto | fecha_límite (YYYY-MM-DD) | descripción**")
+            st.caption("Ejemplo: `Celular | 2026-01-20 | Samsung negro`")
+            decomisos_txt = st.text_area("Objetos decomisados",
+                                          key="inc_dec_txt", height=120)
+        sub = st.form_submit_button("Registrar incidencia", type="primary")
+    if sub:
+        if not descripcion.strip():
+            st.error("La descripción es obligatoria.")
+        else:
+            ok, msg, inc_id = crear_incidencia(
+                al["id"], fecha.strftime("%Y-%m-%d"), tipo, categoria,
+                descripcion.strip(), reportado.strip(),
+                requiere_acta, tipo_acta, st.session_state["user"])
+            if not ok:
+                st.error(msg); return
+            if requiere_decomiso and decomisos_txt.strip():
+                lista, errores = _parse_decomisos(decomisos_txt)
+                if errores:
+                    for e in errores:
+                        st.warning(e)
+                if lista:
+                    n, errs_batch = crear_decomisos_batch(al["id"], inc_id, lista,
+                                                          st.session_state["user"])
+                    if n:
+                        msg += f" ({n} decomiso(s) registrado(s))"
+                    for e in errs_batch:
+                        st.warning(e)
+            # FIX: mantener la vista "Crear" activa
+            st.session_state["inc_vista"] = "Crear"
+            guardar_toast(msg)
+            st.rerun()
 
 def vista_detalle_incidencia(inc_id):
     mostrar_toast_pendiente()
@@ -2326,120 +2365,139 @@ def vista_decomisos():
     actualizar_vencidos()
     usuario = st.session_state["user"]
 
-    tabs = st.tabs(["Activos", "Todos", "Registrar nuevo"])
+    # FIX: radio controlable
+    vista_sel = st.radio(
+        "Vista",
+        ["Activos", "Todos", "Registrar nuevo"],
+        horizontal=True,
+        key="dec_vista",
+        label_visibility="collapsed"
+    )
 
-    with tabs[0]:
-        st.subheader("Decomisos activos")
-        df = listar_decomisos_activos()
-        if df.empty:
-            st.success("No hay decomisos activos.")
-        else:
-            st.write(f"**{len(df)} decomiso(s) activo(s).**")
-            for _, d in df.iterrows():
-                dias_ret = dias_desde(d["fecha_decomiso"])
-                if d["fecha_limite"]:
-                    dias_lim = dias_hasta(d["fecha_limite"])
-                    if dias_lim < 0:
-                        cont_txt = f"⚠️ Vencido hace {abs(dias_lim)} día(s)"
-                    elif dias_lim == 0:
-                        cont_txt = "⏰ Vence hoy"
-                    else:
-                        cont_txt = f"⏳ Vence en {dias_lim} día(s)"
+    if vista_sel == "Activos":
+        _dec_activos(usuario)
+    elif vista_sel == "Todos":
+        _dec_todos()
+    else:
+        _dec_registrar(usuario)
+
+
+def _dec_activos(usuario):
+    st.subheader("Decomisos activos")
+    df = listar_decomisos_activos()
+    if df.empty:
+        st.success("No hay decomisos activos.")
+    else:
+        st.write(f"**{len(df)} decomiso(s) activo(s).**")
+        for _, d in df.iterrows():
+            dias_ret = dias_desde(d["fecha_decomiso"])
+            if d["fecha_limite"]:
+                dias_lim = dias_hasta(d["fecha_limite"])
+                if dias_lim < 0:
+                    cont_txt = f"⚠️ Vencido hace {abs(dias_lim)} día(s)"
+                elif dias_lim == 0:
+                    cont_txt = "⏰ Vence hoy"
                 else:
-                    cont_txt = "Sin fecha límite"
-                cls = "vencido" if d["estado"] == "Vencido" else ""
-                st.markdown(f"""
-                <div class="decomiso-card {cls}">
-                    <div class="dec-obj">{d['objeto']}</div>
-                    <div class="dec-meta">{d['alumno']} — {d['grado'] or ''} {d['seccion'] or ''}</div>
-                    <div class="dec-meta">Retenido el {d['fecha_decomiso']} — {dias_ret} día(s) — Estado: <b>{d['estado']}</b></div>
-                    <div class="dec-contador">{cont_txt}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                with st.expander(f"Acciones decomiso #{d['id']}"):
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        nuevo_estado = st.selectbox(
-                            "Cambiar estado",
-                            [e for e in ESTADOS_DECOMISO if e != "Devuelto"],
-                            index=0, key=f"dec_est_g_{d['id']}")
-                        if st.button("Guardar estado", key=f"dec_est_g_btn_{d['id']}"):
-                            cambiar_estado_decomiso(d["id"], nuevo_estado, usuario)
-                            guardar_toast("Estado actualizado.")
-                            st.rerun()
-                    with c2:
-                        devuelto_a = st.text_input("Devuelto a",
-                                                    key=f"dec_da_g_{d['id']}")
-                        obs_dev = st.text_input("Observaciones",
-                                                 key=f"dec_obs_g_{d['id']}")
-                        if st.button("Marcar DEVUELTO", type="primary",
-                                     key=f"dec_dev_g_{d['id']}"):
-                            ok, msg = devolver_decomiso(d["id"], devuelto_a,
-                                                         obs_dev, usuario)
-                            if ok:
-                                guardar_toast(msg)
-                                st.rerun()
-                            else:
-                                st.error(msg)
-
-    with tabs[1]:
-        st.subheader("Todos los decomisos")
-        df = listar_decomisos_todos()
-        if df.empty:
-            st.info("Sin decomisos registrados.")
-        else:
-            df_show = df.copy()
-            st.write(f"**{len(df)} decomiso(s).**")
-            st.dataframe(df_show, use_container_width=True, hide_index=True)
-
-    with tabs[2]:
-        st.subheader("Registrar decomiso manualmente")
-        st.caption("Selecciona un alumno y agrega uno o varios objetos.")
-        al = buscar_alumno_widget("dec_nuevo")
-        if not al:
-            return
-        st.markdown("---")
-        st.markdown(f"**{al['nombres']} {al['apellido_paterno']}** — "
-                    f"{al['grado'] or ''} {al['seccion'] or ''} — "
-                    f"DNI {mask_dni(al['dni'])}")
-
-        with st.form("form_decomiso"):
-            st.markdown("**Objetos a decomisar**")
-            st.caption("Agrega hasta 5 objetos por registro.")
-            objetos = []
-            for i in range(5):
-                c1, c2, c3 = st.columns([3, 2, 4])
-                with c1:
-                    obj = st.text_input(f"Objeto {i+1}",
-                                         key=f"dec_obj_{i}",
-                                         placeholder="Celular, cartera...")
-                with c2:
-                    f_lim = st.date_input(f"Fecha límite {i+1}",
-                                           value=ahora().date() + timedelta(days=3),
-                                           key=f"dec_fl_{i}")
-                with c3:
-                    desc = st.text_input(f"Descripción {i+1}",
-                                          key=f"dec_desc_{i}",
-                                          placeholder="Marca, color, etc.")
-                if obj.strip():
-                    objetos.append({
-                        "objeto": obj.strip(),
-                        "fecha_limite": f_lim.strftime("%Y-%m-%d"),
-                        "descripcion": desc.strip(),
-                    })
-            sub = st.form_submit_button("Registrar decomisos", type="primary")
-
-        if sub:
-            if not objetos:
-                st.error("Agrega al menos un objeto.")
+                    cont_txt = f"⏳ Vence en {dias_lim} día(s)"
             else:
-                n, errs_batch = crear_decomisos_batch(al["id"], None, objetos,
-                                                       st.session_state["user"])
-                if n:
-                    guardar_toast(f"{n} decomiso(s) registrado(s).")
-                    st.rerun()
-                for e in errs_batch:
-                    st.warning(e)
+                cont_txt = "Sin fecha límite"
+            cls = "vencido" if d["estado"] == "Vencido" else ""
+            st.markdown(f"""
+            <div class="decomiso-card {cls}">
+                <div class="dec-obj">{d['objeto']}</div>
+                <div class="dec-meta">{d['alumno']} — {d['grado'] or ''} {d['seccion'] or ''}</div>
+                <div class="dec-meta">Retenido el {d['fecha_decomiso']} — {dias_ret} día(s) — Estado: <b>{d['estado']}</b></div>
+                <div class="dec-contador">{cont_txt}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            with st.expander(f"Acciones decomiso #{d['id']}"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    nuevo_estado = st.selectbox(
+                        "Cambiar estado",
+                        [e for e in ESTADOS_DECOMISO if e != "Devuelto"],
+                        index=0, key=f"dec_est_g_{d['id']}")
+                    if st.button("Guardar estado", key=f"dec_est_g_btn_{d['id']}"):
+                        cambiar_estado_decomiso(d["id"], nuevo_estado, usuario)
+                        guardar_toast("Estado actualizado.")
+                        st.rerun()
+                with c2:
+                    devuelto_a = st.text_input("Devuelto a",
+                                                key=f"dec_da_g_{d['id']}")
+                    obs_dev = st.text_input("Observaciones",
+                                             key=f"dec_obs_g_{d['id']}")
+                    if st.button("Marcar DEVUELTO", type="primary",
+                                 key=f"dec_dev_g_{d['id']}"):
+                        ok, msg = devolver_decomiso(d["id"], devuelto_a,
+                                                     obs_dev, usuario)
+                        if ok:
+                            guardar_toast(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+
+def _dec_todos():
+    st.subheader("Todos los decomisos")
+    df = listar_decomisos_todos()
+    if df.empty:
+        st.info("Sin decomisos registrados.")
+    else:
+        df_show = df.copy()
+        st.write(f"**{len(df)} decomiso(s).**")
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+
+def _dec_registrar(usuario):
+    st.subheader("Registrar decomiso manualmente")
+    st.caption("Selecciona un alumno y agrega uno o varios objetos.")
+    al = buscar_alumno_widget("dec_nuevo")
+    if not al:
+        return
+    st.markdown("---")
+    st.markdown(f"**{al['nombres']} {al['apellido_paterno']}** — "
+                f"{al['grado'] or ''} {al['seccion'] or ''} — "
+                f"DNI {mask_dni(al['dni'])}")
+
+    with st.form("form_decomiso"):
+        st.markdown("**Objetos a decomisar**")
+        st.caption("Agrega hasta 5 objetos por registro.")
+        objetos = []
+        for i in range(5):
+            c1, c2, c3 = st.columns([3, 2, 4])
+            with c1:
+                obj = st.text_input(f"Objeto {i+1}",
+                                     key=f"dec_obj_{i}",
+                                     placeholder="Celular, cartera...")
+            with c2:
+                f_lim = st.date_input(f"Fecha límite {i+1}",
+                                       value=ahora().date() + timedelta(days=3),
+                                       key=f"dec_fl_{i}")
+            with c3:
+                desc = st.text_input(f"Descripción {i+1}",
+                                      key=f"dec_desc_{i}",
+                                      placeholder="Marca, color, etc.")
+            if obj.strip():
+                objetos.append({
+                    "objeto": obj.strip(),
+                    "fecha_limite": f_lim.strftime("%Y-%m-%d"),
+                    "descripcion": desc.strip(),
+                })
+        sub = st.form_submit_button("Registrar decomisos", type="primary")
+
+    if sub:
+        if not objetos:
+            st.error("Agrega al menos un objeto.")
+        else:
+            n, errs_batch = crear_decomisos_batch(al["id"], None, objetos,
+                                                   usuario)
+            if n:
+                # FIX: mantener la vista "Registrar nuevo" activa
+                st.session_state["dec_vista"] = "Registrar nuevo"
+                guardar_toast(f"{n} decomiso(s) registrado(s).")
+                st.rerun()
+            for e in errs_batch:
+                st.warning(e)
 
 # ─── REPORTES ───────────────────────────────────────────────────────────
 def reporte_diario_incidencias(fecha):
