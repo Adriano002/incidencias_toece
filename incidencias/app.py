@@ -1,5 +1,5 @@
 # app.py
-# Sistema de Incidencias TOECE - versión refactorizada
+# Sistema de Incidencias TOECE - versión refactorizada con bugs corregidos
 import base64
 import hashlib
 import logging
@@ -32,7 +32,7 @@ logging.basicConfig(
 log = logging.getLogger("incidencias")
 
 DB_PATH = "incidencias.db"
-DB_LOCK = threading.Lock()   # fix bug concurrent writes
+DB_LOCK = threading.Lock()
 
 PBK_ITER = 260_000
 PBK_ALG = "sha256"
@@ -44,13 +44,10 @@ CATEGORIAS = ["Conducta", "Academico", "Salud", "Tardanza recurrente",
               "Falta de respeto", "Daño a propiedad", "Decomiso", "Otro"]
 ESTADOS = ["Abierta", "En proceso", "Resuelta", "Archivada"]
 
-# Estados de decomiso
 ESTADOS_DECOMISO = ["Retenido", "Por devolver", "Devuelto", "Vencido"]
-# Objetos comunes para decomiso (sugerencias rápidas)
 OBJETOS_COMUNES = ["Celular", "Cartera", "Perfume", "Audífonos", "Reloj",
                    "Joyas", "Billetera", "Mochila", "Otro"]
 
-# Paleta azul universidad
 COLOR_AZUL = "#0A3D91"
 COLOR_AZUL_DARK = "#072A63"
 COLOR_AZUL_SOFT = "rgba(10,61,145,.08)"
@@ -81,10 +78,6 @@ def mask_dni(dni):
 
 
 def _nombre_archivo_acta(incidencia, alumno):
-    """
-    Genera un nombre de archivo legible para el PDF del acta.
-    Formato: Acta_Apellidos_Nombres_YYYY-MM-DD.pdf
-    """
     def _limpiar(txt):
         if not txt:
             return "SinDato"
@@ -107,7 +100,6 @@ def _nombre_archivo_acta(incidencia, alumno):
     return f"Acta_{ap_p}_{ap_m}_{nombres}_{fecha}.pdf"
 
 def dias_desde(fecha_str):
-    """Días transcurridos desde fecha_str (YYYY-MM-DD)."""
     try:
         f = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         return (ahora().date() - f).days
@@ -115,7 +107,6 @@ def dias_desde(fecha_str):
         return 0
 
 def dias_hasta(fecha_str):
-    """Días que faltan hasta fecha_str. Negativo si ya venció."""
     try:
         f = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         return (f - ahora().date()).days
@@ -139,7 +130,6 @@ def leer_df(q, params=None):
     return pd.read_sql_query(q, con, params=params or [])
 
 def ejecutar(q, params=None):
-    """Escritura segura con lock."""
     with DB_LOCK:
         con = conn()
         cur = con.execute(q, params or [])
@@ -336,7 +326,6 @@ def pedir_password_critica(clave, texto_boton="Confirmar",
                             texto_input="Contraseña de Admin o Direccion"):
     """
     IMPORTANTE: usar SOLO fuera de un st.form().
-    Si lo usas dentro de un form, Streamlit lanzará error.
     """
     pwd = st.text_input(texto_input, type="password", key="pwd_crit_" + clave)
     conf = st.checkbox("Confirmo esta accion", key="conf_crit_" + clave)
@@ -354,7 +343,6 @@ def pedir_password_critica(clave, texto_boton="Confirmar",
 
 # ─── UTILIDADES UI ──────────────────────────────────────────────────────
 def mostrar_toast_pendiente():
-    """Muestra el mensaje guardado antes del rerun (arregla toast muerto)."""
     t = st.session_state.pop("_toast_msg", None)
     if t:
         if t.get("tipo") == "ok":
@@ -367,13 +355,10 @@ def mostrar_toast_pendiente():
 def guardar_toast(msg, tipo="ok"):
     st.session_state["_toast_msg"] = {"msg": msg, "tipo": tipo}
 
-# ─── ESTILOS CSS (AZUL UNIVERSIDAD + minimalista) ───────────────────────
+# ─── ESTILOS CSS ────────────────────────────────────────────────────────
 def aplicar_estilos():
     st.markdown("""
     <style>
-    /* ══════════════════════════════════════════════════════════════════
-       VARIABLES GLOBALES (se adaptan a modo claro/oscuro automáticamente)
-       ══════════════════════════════════════════════════════════════════ */
     :root{
         --azul: #0A3D91;
         --azul-dark: #072A63;
@@ -384,7 +369,6 @@ def aplicar_estilos():
         --radius-sm: 6px;
         --sombra: 0 1px 3px rgba(10,61,145,.08);
     }
-
     @media (prefers-color-scheme: dark){
         :root{
             --azul: #5B8DEF;
@@ -395,16 +379,11 @@ def aplicar_estilos():
             --sombra: 0 1px 3px rgba(0,0,0,.3);
         }
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       TIPOGRAFÍA
-       ══════════════════════════════════════════════════════════════════ */
     html, body, [class*="css"], .stApp{
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
                      Roboto, sans-serif !important;
         font-size: 15px !important;
     }
-
     h1, h2, h3, h4{
         font-family: 'Inter', sans-serif !important;
         letter-spacing: -0.3px;
@@ -413,10 +392,6 @@ def aplicar_estilos():
     h1{ font-size: 28px !important; font-weight: 800 !important; }
     h2{ font-size: 22px !important; font-weight: 700 !important; }
     h3{ font-size: 18px !important; font-weight: 700 !important; }
-
-    /* ══════════════════════════════════════════════════════════════════
-       BOTONES
-       ══════════════════════════════════════════════════════════════════ */
     .stButton > button, .stFormSubmitButton > button, .stDownloadButton > button{
         background: var(--azul) !important;
         color: #FFF !important;
@@ -435,10 +410,6 @@ def aplicar_estilos():
         transform: translateY(-1px);
         box-shadow: 0 3px 8px rgba(10,61,145,.25);
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       INPUTS
-       ══════════════════════════════════════════════════════════════════ */
     .stTextInput input, .stNumberInput input, .stDateInput input,
     .stTimeInput input, .stTextArea textarea, .stSelectbox > div > div{
         border-radius: var(--radius-sm) !important;
@@ -450,10 +421,6 @@ def aplicar_estilos():
         border-color: var(--azul) !important;
         box-shadow: 0 0 0 3px var(--azul-soft) !important;
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       SIDEBAR
-       ══════════════════════════════════════════════════════════════════ */
     section[data-testid="stSidebar"]{
         border-right: 1px solid var(--azul-border);
     }
@@ -472,10 +439,6 @@ def aplicar_estilos():
         border-left-color: var(--azul);
     }
     section[data-testid="stSidebar"] .stRadio input{ display: none; }
-
-    /* ══════════════════════════════════════════════════════════════════
-       HEADER DE SIDEBAR
-       ══════════════════════════════════════════════════════════════════ */
     .sidebar-header{
         background: linear-gradient(135deg, var(--azul) 0%, var(--azul-dark) 100%);
         padding: 22px 18px;
@@ -500,10 +463,6 @@ def aplicar_estilos():
         font-size: 10px; font-weight: 800; text-transform: uppercase;
         letter-spacing: .12em; color: #FFF !important;
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       HERO DEL PERFIL DEL ALUMNO
-       ══════════════════════════════════════════════════════════════════ */
     .alumno-hero{
         background: linear-gradient(135deg, var(--azul) 0%, var(--azul-dark) 100%);
         border-radius: 14px;
@@ -542,10 +501,6 @@ def aplicar_estilos():
         border: 1px solid rgba(255,255,255,.45);
         color: #FFF !important;
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       TARJETAS (.card) — se adaptan al tema
-       ══════════════════════════════════════════════════════════════════ */
     .card{
         background: var(--secondary-background-color);
         border: 1px solid var(--azul-border);
@@ -577,10 +532,6 @@ def aplicar_estilos():
     .card .info-valor{
         font-weight: 500;
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       KPI GRID
-       ══════════════════════════════════════════════════════════════════ */
     .kpi-grid{
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -621,10 +572,6 @@ def aplicar_estilos():
     @media (prefers-color-scheme: dark){
         .kpi.kpi-warn .kpi-num{ color: #F6AD55; }
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       CARDS DE INCIDENCIA
-       ══════════════════════════════════════════════════════════════════ */
     .inc-card{
         background: var(--secondary-background-color);
         border: 1px solid var(--azul-border);
@@ -674,10 +621,6 @@ def aplicar_estilos():
         opacity: 0.6;
         margin-top: 8px;
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       MÉTRICAS DE STREAMLIT
-       ══════════════════════════════════════════════════════════════════ */
     div[data-testid="stMetric"]{
         background: var(--secondary-background-color);
         border: 1px solid var(--azul-border);
@@ -694,10 +637,6 @@ def aplicar_estilos():
         font-size: 26px !important; font-weight: 800 !important;
         color: var(--azul) !important;
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       TABS
-       ══════════════════════════════════════════════════════════════════ */
     .stTabs [data-baseweb="tab-list"]{
         gap: 2px;
         border-bottom: 2px solid var(--azul-border);
@@ -714,10 +653,6 @@ def aplicar_estilos():
         font-weight: 800 !important;
         opacity: 1;
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       EXPANDERS
-       ══════════════════════════════════════════════════════════════════ */
     .streamlit-expanderHeader, details summary{
         border: 1px solid var(--azul-border) !important;
         border-radius: var(--radius-sm) !important;
@@ -728,10 +663,6 @@ def aplicar_estilos():
     .streamlit-expanderHeader:hover{
         border-color: var(--azul) !important;
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       CARDS DE DECOMISO
-       ══════════════════════════════════════════════════════════════════ */
     .decomiso-card{
         background: var(--secondary-background-color);
         border: 1px solid var(--azul-border);
@@ -755,20 +686,12 @@ def aplicar_estilos():
         font-size: 12px; font-weight: 700;
         margin-top: 6px;
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       SEPARADORES
-       ══════════════════════════════════════════════════════════════════ */
     hr{
         border: none;
         height: 1px;
         background: var(--azul-border);
         margin: 18px 0;
     }
-
-    /* ══════════════════════════════════════════════════════════════════
-       RESPONSIVE
-       ══════════════════════════════════════════════════════════════════ */
     @media (max-width: 768px){
         h1{ font-size: 22px !important; }
         .alumno-hero{ padding: 20px; gap: 16px; }
@@ -815,7 +738,6 @@ def componente_escaner(key):
     return None
 
 def escaner_widget(key="escaner"):
-    """Fix BUG 5: rerun inmediato después de procesar escaneo."""
     dni = componente_escaner(key)
     if not dni:
         return None
@@ -824,7 +746,6 @@ def escaner_widget(key="escaner"):
     if ult.get("dni") == dni and (time.time() - ult.get("ts", 0)) < 3.0:
         return None
     st.session_state[procesado_key] = {"dni": dni, "ts": time.time()}
-    # Incrementar mount_id para remount del componente
     st.session_state[f"_qr_mount_{key}"] = \
         st.session_state.get(f"_qr_mount_{key}", 0) + 1
     al = buscar_alumno_por_dni(dni)
@@ -941,7 +862,6 @@ def menu_lateral():
             f'<div class="rol">{rol}</div>'
             f'</div>', unsafe_allow_html=True)
 
-        # ── Aplicar cambio de menú pendiente ANTES de crear el radio ──
         pendiente = st.session_state.pop("_ir_a_menu", None)
         if pendiente and pendiente in opciones:
             st.session_state["menu"] = pendiente
@@ -954,6 +874,7 @@ def menu_lateral():
         if st.button("Cerrar sesión", use_container_width=True):
             cerrar_sesion(); st.rerun()
     return op
+
 # ─── ALUMNOS CRUD ───────────────────────────────────────────────────────
 def buscar_alumnos(texto="", grado="", seccion="", dni="", limite=300):
     q = """SELECT id,dni,nombres,apellido_paterno,apellido_materno,
@@ -1024,9 +945,6 @@ def _obtener_alumno(al_id):
 # ─── INCIDENCIAS ────────────────────────────────────────────────────────
 def crear_incidencia(alumno_id, fecha, tipo, categoria, descripcion,
                      reportado_por, requiere_acta, tipo_acta, usuario):
-    """
-    Fix BUG 6: devuelve (True, msg, incidencia_id) en lugar de solo (True, msg).
-    """
     cur = ejecutar("""INSERT INTO incidencias(alumno_id,fecha,hora,tipo,categoria,
                       descripcion,reportado_por,estado,requiere_acta,tipo_acta,
                       created_at)
@@ -1069,7 +987,14 @@ def _obtener_incidencia(inc_id):
 # ─── DECOMISOS ──────────────────────────────────────────────────────────
 def crear_decomiso(alumno_id, incidencia_id, objeto, descripcion,
                    fecha_limite, usuario):
-    """Crea un decomiso individual. Puede haber varios por incidencia."""
+    """Crea un decomiso individual. Valida fecha límite futura."""
+    if fecha_limite:
+        try:
+            fl = datetime.strptime(fecha_limite, "%Y-%m-%d").date()
+            if fl < ahora().date():
+                return False, f"Fecha límite {fecha_limite} ya pasó."
+        except ValueError:
+            return False, f"Fecha límite inválida: {fecha_limite}"
     escribir("""INSERT INTO decomisos(alumno_id,incidencia_id,fecha_decomiso,
                   hora_decomiso,objeto,descripcion,retenido_por,fecha_limite,
                   estado,created_at)
@@ -1083,22 +1008,25 @@ def crear_decomiso(alumno_id, incidencia_id, objeto, descripcion,
     return True, f"Decomiso de '{objeto}' registrado."
 
 def crear_decomisos_batch(alumno_id, incidencia_id, lista_objetos, usuario):
-    """Crea varios decomisos a la vez. lista_objetos = [{objeto, descripcion, fecha_limite}]"""
+    """Crea varios decomisos a la vez. Valida cada fecha."""
     creados = 0
+    errores = []
     for o in lista_objetos:
         if not o.get("objeto", "").strip():
             continue
-        crear_decomiso(
+        ok, msg = crear_decomiso(
             alumno_id, incidencia_id,
             o["objeto"].strip(),
             o.get("descripcion", "").strip(),
             o.get("fecha_limite"),
             usuario)
-        creados += 1
-    return creados
+        if ok:
+            creados += 1
+        else:
+            errores.append(msg)
+    return creados, errores
 
 def devolver_decomiso(dec_id, devuelto_a, observaciones, usuario):
-    """Cierra un decomiso marcándolo como Devuelto."""
     con = conn()
     cur = con.execute("SELECT * FROM decomisos WHERE id=?", (dec_id,))
     f = cur.fetchone()
@@ -1153,7 +1081,6 @@ def listar_decomisos_todos():
                       ORDER BY d.estado='Devuelto', d.fecha_decomiso DESC""")
 
 def actualizar_vencidos():
-    """Marca como 'Vencido' los decomisos cuya fecha_limite ya pasó."""
     try:
         escribir("""UPDATE decomisos SET estado='Vencido'
                     WHERE estado IN ('Retenido','Por devolver')
@@ -1179,36 +1106,35 @@ def _wrap_text(texto, ancho):
     return lineas or [""]
 
 def generar_pdf_acta(incidencia, alumno, acta_data):
+    if not alumno:
+        alumno = {}
+    if not incidencia:
+        incidencia = {}
     buf = BytesIO()
     c = pdfcanvas.Canvas(buf, pagesize=A4)
     width, height = A4
 
-    # ── Encabezado con franja azul ──
     c.setFillColorRGB(0.039, 0.239, 0.568)
     c.rect(0, height - 3.8*cm, width, 3.8*cm, fill=1, stroke=0)
     c.setFillColorRGB(1, 1, 1)
     c.setFont("Helvetica-Bold", 18)
     c.drawString(2*cm, height - 1.5*cm, "ACTA DE INCIDENCIA")
 
-    # Nombre del alumno en el encabezado
     c.setFont("Helvetica-Bold", 12)
     nombre_al_cab = (f"{alumno.get('apellido_paterno','')} "
                      f"{alumno.get('apellido_materno','') or ''}, "
                      f"{alumno.get('nombres','')}")
     c.drawString(2*cm, height - 2.2*cm, f"Alumno: {nombre_al_cab}")
 
-    # Fecha de la incidencia en el encabezado
     c.setFont("Helvetica", 11)
     c.drawString(2*cm, height - 2.75*cm,
                  f"Fecha de incidencia: {incidencia.get('fecha','')} "
                  f"{incidencia.get('hora','')}")
 
-    # Fecha de emisión del acta
     c.setFont("Helvetica-Oblique", 9)
     c.drawString(2*cm, height - 3.25*cm,
                  f"Acta emitida: {timestamp_str()}")
 
-    # ── Cuerpo ──
     y = height - 4.8*cm
     c.setFillColorRGB(0, 0, 0)
     c.setFont("Helvetica-Bold", 12)
@@ -1283,7 +1209,6 @@ def generar_pdf_acta(incidencia, alumno, acta_data):
     c.drawString(2*cm, y, "Firmas")
     y -= 1.2*cm
 
-    # Firma del alumno
     firma_al = acta_data.get("firma_alumno_base64")
     if firma_al:
         try:
@@ -1298,7 +1223,6 @@ def generar_pdf_acta(incidencia, alumno, acta_data):
     c.drawString(2*cm, y - 3.5*cm,
                  f"Alumno: {acta_data.get('nombre_alumno','') or nombre_al}")
 
-    # Firma del apoderado
     firma_apo = acta_data.get("firma_apoderado_base64")
     if firma_apo:
         try:
@@ -1326,8 +1250,17 @@ def crear_acta_doble(incidencia_id, firmante, firma_alumno, firma_apoderado,
     if not inc:
         return False, "Incidencia no encontrada."
     inc = dict(inc)
+
+    # FIX: Validar que la incidencia requiera acta
+    if not inc.get("requiere_acta"):
+        return False, ("Esta incidencia no requiere acta. "
+                       "Si necesitas firmar una, marca 'requiere acta' primero.")
+
     cur = con.execute("SELECT * FROM alumnos WHERE id=?", (inc["alumno_id"],))
-    al = dict(cur.fetchone())
+    al = cur.fetchone()
+    if not al:
+        return False, "Alumno no encontrado."
+    al = dict(al)
 
     if not firma_alumno or not firma_apoderado:
         return False, "Faltan firmas."
@@ -1385,10 +1318,17 @@ def vista_escaner():
     key_scan = "scan_" + modo.lower().replace(" ", "_")
     key_alumno = f"_scan_alumno_{key_scan}"
 
-    # Recuperar alumno guardado entre reruns
+    # FIX: al cambiar de modo, limpiar alumno guardado
+    modo_prev = st.session_state.get("_scan_modo_prev")
+    if modo_prev != modo:
+        st.session_state["_scan_modo_prev"] = modo
+        # Limpiar TODOS los alumnos guardados de otros modos
+        for k in list(st.session_state.keys()):
+            if k.startswith("_scan_alumno_scan_"):
+                st.session_state.pop(k, None)
+
     al = st.session_state.get(key_alumno)
 
-    # Solo escanear si no hay alumno ya guardado para este modo
     if not al:
         al = escaner_widget(key_scan)
         if al:
@@ -1419,13 +1359,11 @@ def _perfil_inline(idal, key_scan):
         st.warning("Alumno no encontrado."); return
     _render_alumno_perfil(al, compact=True, key_scan=key_scan)
 
-
-
-
 def _parse_decomisos(texto):
-    """Parsea líneas 'objeto | fecha_limite | descripcion'."""
+    """Parsea líneas 'objeto | fecha_limite | descripcion'. Retorna (lista, errores)."""
     lista = []
-    for linea in texto.splitlines():
+    errores = []
+    for i, linea in enumerate(texto.splitlines(), 1):
         linea = linea.strip()
         if not linea:
             continue
@@ -1433,15 +1371,18 @@ def _parse_decomisos(texto):
         objeto = partes[0] if len(partes) > 0 else ""
         fecha_lim = partes[1] if len(partes) > 1 else ""
         desc = partes[2] if len(partes) > 2 else ""
-        # Validar fecha
+        if not objeto:
+            errores.append(f"Línea {i}: objeto vacío")
+            continue
         if fecha_lim:
             try:
                 datetime.strptime(fecha_lim, "%Y-%m-%d")
             except ValueError:
+                errores.append(f"Línea {i}: fecha '{fecha_lim}' inválida (usa YYYY-MM-DD)")
                 fecha_lim = ""
         lista.append({"objeto": objeto, "fecha_limite": fecha_lim,
                       "descripcion": desc})
-    return lista
+    return lista, errores
 
 def _incidencia_inline(al, key_scan):
     st.subheader("Nueva incidencia")
@@ -1483,12 +1424,17 @@ def _incidencia_inline(al, key_scan):
             if not ok:
                 st.error(msg); return
             if requiere_decomiso and decomisos_txt.strip():
-                lista = _parse_decomisos(decomisos_txt)
+                lista, errores = _parse_decomisos(decomisos_txt)
+                if errores:
+                    for e in errores:
+                        st.warning(e)
                 if lista:
-                    n = crear_decomisos_batch(al["id"], inc_id, lista,
-                                              st.session_state["user"])
+                    n, errs_batch = crear_decomisos_batch(al["id"], inc_id, lista,
+                                                          st.session_state["user"])
                     if n:
                         msg += f" ({n} decomiso(s) registrado(s))"
+                    for e in errs_batch:
+                        st.warning(e)
             st.session_state.pop(f"_scan_alumno_{key_scan}", None)
             limpiar_escaner(key_scan)
             guardar_toast(msg, "ok")
@@ -1523,7 +1469,6 @@ def _render_alumno_perfil(al, compact=False, key_scan=None):
             if st.button("Ver perfil completo", type="primary",
                          use_container_width=True, key="ver_full_perfil"):
                 st.session_state["alumno_perfil_id"] = idal
-                # Bandera que se aplicará al inicio del próximo rerun
                 st.session_state["_ir_a_menu"] = "Alumnos"
                 if key_scan:
                     st.session_state.pop(f"_scan_alumno_{key_scan}", None)
@@ -1535,7 +1480,6 @@ def _render_alumno_perfil(al, compact=False, key_scan=None):
                 st.rerun()
         return
 
-    # ── Estadísticas ──
     incs = leer_df("""SELECT id, fecha, hora, tipo, categoria, estado,
                       requiere_acta, tipo_acta, descripcion, reportado_por
                       FROM incidencias WHERE alumno_id=?
@@ -1573,7 +1517,6 @@ def _render_alumno_perfil(al, compact=False, key_scan=None):
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Datos del alumno y apoderado ──
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
@@ -1606,7 +1549,6 @@ def _render_alumno_perfil(al, compact=False, key_scan=None):
         </div>
         """, unsafe_allow_html=True)
 
-    # ── Tabs ──
     tabs = st.tabs(["Incidencias", "Decomisos", "Editar datos"])
 
     with tabs[0]:
@@ -1648,7 +1590,6 @@ def _render_decomisos_tab(decomisos, idal):
     usuario = st.session_state["user"]
     for _, d in decomisos.iterrows():
         estado = d["estado"]
-        # Contador
         dias_ret = dias_desde(d["fecha_decomiso"])
         if d["fecha_limite"]:
             dias_lim = dias_hasta(d["fecha_limite"])
@@ -2120,12 +2061,17 @@ def vista_incidencias():
                 if not ok:
                     st.error(msg); return
                 if requiere_decomiso and decomisos_txt.strip():
-                    lista = _parse_decomisos(decomisos_txt)
+                    lista, errores = _parse_decomisos(decomisos_txt)
+                    if errores:
+                        for e in errores:
+                            st.warning(e)
                     if lista:
-                        n = crear_decomisos_batch(al["id"], inc_id, lista,
-                                                  st.session_state["user"])
+                        n, errs_batch = crear_decomisos_batch(al["id"], inc_id, lista,
+                                                              st.session_state["user"])
                         if n:
                             msg += f" ({n} decomiso(s) registrado(s))"
+                        for e in errs_batch:
+                            st.warning(e)
                 guardar_toast(msg)
                 st.rerun()
 
@@ -2135,8 +2081,12 @@ def vista_detalle_incidencia(inc_id):
         st.session_state.pop("incidencia_ver_id", None); st.rerun()
     r = _obtener_incidencia(inc_id)
     if not r:
-        st.warning("Incidencia no encontrada."); return
+        st.warning("Incidencia no encontrada.")
+        st.session_state.pop("incidencia_ver_id", None); return
     al = _obtener_alumno(r["alumno_id"])
+    if not al:
+        st.warning("Alumno no encontrado.")
+        st.session_state.pop("incidencia_ver_id", None); return
     nombre = (al['apellido_paterno'] + " " + (al['apellido_materno'] or "") +
               ", " + al['nombres'])
     st.subheader(nombre)
@@ -2159,6 +2109,9 @@ def vista_detalle_incidencia(inc_id):
         st.markdown("---")
         st.subheader("Decomisos asociados")
         _render_decomisos_tab(decs, al["id"])
+    else:
+        st.markdown("---")
+        st.info("Sin decomisos asociados a esta incidencia.")
 
     st.markdown("---")
     st.subheader("Cambiar estado")
@@ -2170,6 +2123,15 @@ def vista_detalle_incidencia(inc_id):
         if ok:
             guardar_toast(msg)
             st.rerun()
+
+    st.markdown("---")
+    st.subheader("Eliminar incidencia")
+    if pedir_password_critica(f"elim_inc_{inc_id}", "Eliminar incidencia"):
+        ok, msg = eliminar_incidencia(inc_id, st.session_state["user"])
+        st.session_state.pop("incidencia_ver_id", None)
+        guardar_toast(msg)
+        st.rerun()
+
     st.markdown("---")
     actas = actas_de_incidencia(inc_id)
     if r["requiere_acta"]:
@@ -2197,7 +2159,9 @@ def vista_detalle_incidencia(inc_id):
                             mime="application/pdf",
                             key=f"pdf_det_{act['id']}")
                     except Exception:
-                        pass
+                        st.warning("PDF no disponible.")
+                else:
+                    st.warning("PDF no disponible para esta acta.")
                 st.markdown("---")
         st.subheader("Firmar nueva acta (alumno y apoderado)")
         st.caption("El acta se genera en PDF con las observaciones como contenido.")
@@ -2245,6 +2209,7 @@ def vista_detalle_incidencia(inc_id):
                     st.rerun()
                 else:
                     st.error(msg)
+
 # ─── VISTA ACTAS ────────────────────────────────────────────────────────
 def vista_actas():
     mostrar_toast_pendiente()
@@ -2350,7 +2315,10 @@ def vista_actas():
                                 key=f"pdf_acta_{act['id']}")
                         except Exception as e:
                             st.warning(f"No se pudo cargar el PDF: {e}")
+                    else:
+                        st.warning("PDF no disponible para esta acta.")
                     st.markdown("---")
+
 # ─── VISTA DECOMISOS (general) ──────────────────────────────────────────
 def vista_decomisos():
     mostrar_toast_pendiente()
@@ -2465,11 +2433,13 @@ def vista_decomisos():
             if not objetos:
                 st.error("Agrega al menos un objeto.")
             else:
-                n = crear_decomisos_batch(al["id"], None, objetos,
-                                          st.session_state["user"])
+                n, errs_batch = crear_decomisos_batch(al["id"], None, objetos,
+                                                       st.session_state["user"])
                 if n:
                     guardar_toast(f"{n} decomiso(s) registrado(s).")
                     st.rerun()
+                for e in errs_batch:
+                    st.warning(e)
 
 # ─── REPORTES ───────────────────────────────────────────────────────────
 def reporte_diario_incidencias(fecha):
