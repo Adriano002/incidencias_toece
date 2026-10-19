@@ -1,5 +1,3 @@
-# app.py
-# Sistema de Incidencias TOECE - versión refactorizada con bugs corregidos
 import base64
 import hashlib
 import logging
@@ -21,8 +19,6 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as pdfcanvas
-
-# ─── CONFIG ─────────────────────────────────────────────────────────────
 LOG_DIR = Path("logs"); LOG_DIR.mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -54,7 +50,6 @@ COLOR_AZUL_SOFT = "rgba(10,61,145,.08)"
 COLOR_AZUL_BORDER = "rgba(10,61,145,.25)"
 COLOR_AZUL_LIGHT = "#E8EFF9"
 
-# ─── HELPERS ────────────────────────────────────────────────────────────
 def ahora():
     return datetime.now(timezone.utc) - timedelta(hours=5)
 
@@ -113,7 +108,6 @@ def dias_hasta(fecha_str):
     except Exception:
         return 0
 
-# ─── DB ─────────────────────────────────────────────────────────────────
 @st.cache_resource
 def _conn():
     con = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -258,7 +252,6 @@ def inicializar():
     _seed()
     return True
 
-# ─── SEGURIDAD ──────────────────────────────────────────────────────────
 def hashear_password(p):
     salt = secrets.token_bytes(16)
     d = hashlib.pbkdf2_hmac(PBK_ALG, p.encode("utf-8"), salt, PBK_ITER)
@@ -341,7 +334,6 @@ def pedir_password_critica(clave, texto_boton="Confirmar",
         return True
     return False
 
-# ─── UTILIDADES UI ──────────────────────────────────────────────────────
 def mostrar_toast_pendiente():
     t = st.session_state.pop("_toast_msg", None)
     if t:
@@ -355,7 +347,6 @@ def mostrar_toast_pendiente():
 def guardar_toast(msg, tipo="ok"):
     st.session_state["_toast_msg"] = {"msg": msg, "tipo": tipo}
 
-# ─── ESTILOS CSS ────────────────────────────────────────────────────────
 def aplicar_estilos():
     st.markdown("""
     <style>
@@ -705,7 +696,6 @@ def aplicar_estilos():
     </style>
     """, unsafe_allow_html=True)
 
-# ─── GRADOS / SECCIONES ─────────────────────────────────────────────────
 def obtener_grados():
     df = leer_df("""SELECT DISTINCT grado FROM alumnos
                     WHERE activo=1 AND grado IS NOT NULL AND grado!=''
@@ -722,8 +712,6 @@ def obtener_secciones(grado=""):
                         WHERE activo=1 AND seccion IS NOT NULL
                         AND seccion!='' ORDER BY seccion""")
     return [""] + df["seccion"].tolist()
-
-# ─── SCANNER QR ─────────────────────────────────────────────────────────
 def buscar_alumno_por_dni(dni):
     con = conn()
     cur = con.execute("SELECT * FROM alumnos WHERE dni=? AND activo=1", (dni,))
@@ -758,8 +746,6 @@ def limpiar_escaner(key):
     st.session_state.pop(f"_qr_procesado_{key}", None)
     st.session_state.pop(f"_ult_qr_{key}", None)
     st.session_state.pop(f"_scan_alumno_{key}", None)
-
-# ─── VISTAS: LOGIN, CUENTA, MENÚ ────────────────────────────────────────
 def vista_login():
     st.markdown(f"""
     <div style="text-align:center; margin-top:80px; margin-bottom:36px;">
@@ -874,8 +860,6 @@ def menu_lateral():
         if st.button("Cerrar sesión", use_container_width=True):
             cerrar_sesion(); st.rerun()
     return op
-
-# ─── ALUMNOS CRUD ───────────────────────────────────────────────────────
 def buscar_alumnos(texto="", grado="", seccion="", dni="", limite=300):
     q = """SELECT id,dni,nombres,apellido_paterno,apellido_materno,
            grado,seccion,turno,nombre_apoderado,telefono_apoderado,
@@ -942,7 +926,6 @@ def _obtener_alumno(al_id):
     f = cur.fetchone()
     return dict(f) if f else None
 
-# ─── INCIDENCIAS ────────────────────────────────────────────────────────
 def crear_incidencia(alumno_id, fecha, tipo, categoria, descripcion,
                      reportado_por, requiere_acta, tipo_acta, usuario):
     cur = ejecutar("""INSERT INTO incidencias(alumno_id,fecha,hora,tipo,categoria,
@@ -983,8 +966,7 @@ def _obtener_incidencia(inc_id):
     cur = con.execute("SELECT * FROM incidencias WHERE id=?", (inc_id,))
     f = cur.fetchone()
     return dict(f) if f else None
-
-# ─── DECOMISOS ──────────────────────────────────────────────────────────
+    
 def crear_decomiso(alumno_id, incidencia_id, objeto, descripcion,
                    fecha_limite, usuario):
     """Crea un decomiso individual. Valida fecha límite futura."""
@@ -1089,7 +1071,6 @@ def actualizar_vencidos():
     except Exception as e:
         log.warning("actualizar_vencidos: %s", e)
 
-# ─── PDF ACTAS ──────────────────────────────────────────────────────────
 def _wrap_text(texto, ancho):
     palabras = str(texto).split()
     lineas = []
@@ -1301,7 +1282,6 @@ def actas_de_incidencia(inc_id):
                       FROM actas
                       WHERE incidencia_id=? ORDER BY id""", (inc_id,))
 
-# ─── VISTA ESCANER QR ───────────────────────────────────────────────────
 def vista_escaner():
     mostrar_toast_pendiente()
     st.title("Escáner QR")
@@ -1440,7 +1420,6 @@ def _incidencia_inline(al, key_scan):
             guardar_toast(msg, "ok")
             st.rerun()
 
-# ─── PERFIL DEL ALUMNO PROFESIONAL ──────────────────────────────────────
 def _render_alumno_perfil(al, compact=False, key_scan=None):
     idal = al["id"]
     nombre = (al['apellido_paterno'] + " " + (al['apellido_materno'] or "") +
@@ -1696,7 +1675,7 @@ def _render_editar_alumno(al):
                 guardar_toast("Alumno reactivado.")
                 st.rerun()
 
-# ─── VISTA ALUMNOS ──────────────────────────────────────────────────────
+
 def vista_alumnos():
     mostrar_toast_pendiente()
     st.title("Alumnos")
@@ -2001,8 +1980,6 @@ def insertar_alumnos_validos(val):
                 errs.append(f"{mask_dni(d['dni'])}: {e}")
         con.commit()
     return ins, reac, errs
-
-# ─── VISTA INCIDENCIAS ──────────────────────────────────────────────────
 def buscar_alumno_widget(clave):
     st.write("**Buscar alumno**")
     c1, c2, c3, c4 = st.columns(4)
