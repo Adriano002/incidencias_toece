@@ -1310,155 +1310,152 @@ def menu_lateral():
             cerrar_sesion(); st.rerun()
     return op
 
-#VISTA ESCANER 
+# ==========================================
+# VISTA ESCANER (FLUJO NUEVO EN PANTALLA ÚNICA)
+# ==========================================
 def vista_escaner():
     mostrar_toast_pendiente()
     st.title("Escáner QR")
+    
+    if st.session_state.pop("_reset_escaner", False):
+        st.session_state.pop("_scan_alumno_qr", None)
+        st.session_state.pop("scan_accion", None)
+        st.session_state.pop("scan_tipo", None)
+        limpiar_escaner("qr")
 
-    # FIX #3: aplicar cambio de modo pendiente ANTES del radio
-    pendiente_modo = st.session_state.pop("_ir_a_modo_scan", None)
-    if pendiente_modo:
-        st.session_state["scan_modo"] = pendiente_modo
+    if "_scan_alumno_qr" not in st.session_state:
+        al = escaner_widget("qr")
+        if al: st.session_state["_scan_alumno_qr"] = al
+        else: return
 
-    modo = st.radio(
-        "Modo",
-        ["Ver perfil", "Registrar incidencia"],
-        horizontal=True,
-        key="scan_modo",
-    )
-
+    al = st.session_state["_scan_alumno_qr"]
+    st.success(f"✓ {al['nombres']} {al['apellido_paterno']} — {al['grado'] or ''} {al['seccion'] or ''} — DNI {mask_dni(al['dni'])}")
+    
+    if st.button("🔄 Escanear otro alumno", key="reset_scan"):
+        st.session_state["_reset_escaner"] = True
+        st.rerun()
+        
     st.markdown("---")
 
-    key_scan = "scan_" + modo.lower().replace(" ", "_")
-    key_alumno = f"_scan_alumno_{key_scan}"
-
-    modo_prev = st.session_state.get("_scan_modo_prev")
-    if modo_prev != modo:
-        st.session_state["_scan_modo_prev"] = modo
-        for k in list(st.session_state.keys()):
-            if k.startswith("_scan_alumno_scan_"):
-                st.session_state.pop(k, None)
-
-    al = st.session_state.get(key_alumno)
-
-    if not al:
-        al = escaner_widget(key_scan)
-        if al:
-            st.session_state[key_alumno] = al
-
-    if not al:
+    # 1. Preguntar acción (Ver perfil o Registrar)
+    if "scan_accion" not in st.session_state:
+        st.subheader("¿Qué deseas hacer?")
+        c1, c2 = st.columns(2)
+        if c1.button("Ver perfil", use_container_width=True):
+            st.session_state["scan_accion"] = "ver"
+            st.rerun()
+        if c2.button("Registrar", type="primary", use_container_width=True):
+            st.session_state["scan_accion"] = "registrar"
+            st.rerun()
         return
 
-    st.success(f"✓ {al['nombres']} {al['apellido_paterno']} — "
-               f"{al['grado'] or ''} {al['seccion'] or ''} — "
-               f"DNI {mask_dni(al['dni'])}")
-
-    if st.button("🔄 Escanear otro alumno", key=f"reset_{key_scan}"):
-        st.session_state.pop(key_alumno, None)
-        limpiar_escaner(key_scan)
-        st.rerun()
-
-    st.markdown("---")
-
-    if modo == "Ver perfil":
-        _perfil_inline(al["id"], key_scan)
-    else:
-        _incidencia_inline(al, key_scan)
-
-def _perfil_inline(idal, key_scan):
-    al = _obtener_alumno(idal)
-    if not al:
-        st.warning("Alumno no encontrado."); return
-    _render_alumno_perfil(al, compact=True, key_scan=key_scan)
-
-def _parse_decomisos(texto):
-    lista = []
-    errores = []
-    for i, linea in enumerate(texto.splitlines(), 1):
-        linea = linea.strip()
-        if not linea:
-            continue
-        partes = [p.strip() for p in linea.split("|")]
-        objeto = partes[0] if len(partes) > 0 else ""
-        fecha_lim = partes[1] if len(partes) > 1 else ""
-        desc = partes[2] if len(partes) > 2 else ""
-        if not objeto:
-            errores.append(f"Línea {i}: objeto vacío")
-            continue
-        if fecha_lim:
-            try:
-                datetime.strptime(fecha_lim, "%Y-%m-%d")
-            except ValueError:
-                errores.append(f"Línea {i}: fecha '{fecha_lim}' inválida (usa YYYY-MM-DD)")
-                fecha_lim = ""
-        lista.append({"objeto": objeto, "fecha_limite": fecha_lim,
-                      "descripcion": desc})
-    return lista, errores
-
-def _incidencia_inline(al, key_scan):
-    st.subheader("Nueva incidencia")
-    with st.form("form_inc_scan"):
-        c1, c2 = st.columns(2)
-        with c1:
-            fecha = st.date_input("Fecha", value=ahora().date())
-            tipo = st.selectbox("Tipo", TIPOS_INCIDENCIA)
-        with c2:
-            categoria = st.selectbox("Categoria", CATEGORIAS)
-            reportado = st.text_input("Reportado por",
-                                      value=st.session_state["user"]["nombres"])
-        descripcion = st.text_area("Descripción *")
-        requiere_acta = st.checkbox("¿Requiere acta?")
-        tipo_acta = None
-        if requiere_acta:
-            tipo_acta = st.radio("Tipo de acta",
-                                ["alumno", "apoderado", "alumno_apoderado"],
-                                horizontal=True)
-        requiere_decomiso = st.checkbox("¿Requiere decomiso?")
-        decomisos_txt = ""
-        if requiere_decomiso:
-            st.caption("Escribe UN objeto por línea. Ejemplo:")
-            st.caption("`Celular | 2026-01-20 | Samsung negro`")
-            st.caption("Formato: **objeto | fecha_límite (YYYY-MM-DD) | descripción (opcional)**")
-            decomisos_txt = st.text_area("Objetos decomisados",
-                                         key="scan_dec_txt",
-                                         height=120)
-        sub = st.form_submit_button("Registrar incidencia", type="primary")
-
-    if sub:
-        if not descripcion.strip():
-            st.error("Descripción obligatoria.")
-        else:
-            ok, msg, inc_id = crear_incidencia(
-                al["id"], fecha.strftime("%Y-%m-%d"), tipo, categoria,
-                descripcion.strip(), reportado.strip(),
-                requiere_acta, tipo_acta, st.session_state["user"])
-            if not ok:
-                st.error(msg); return
-            if requiere_decomiso and decomisos_txt.strip():
-                lista, errores = _parse_decomisos(decomisos_txt)
-                if errores:
-                    for e in errores:
-                        st.warning(e)
-                if lista:
-                    n, errs_batch = crear_decomisos_batch(al["id"], inc_id, lista,
-                                                          st.session_state["user"])
-                    if n:
-                        msg += f" ({n} decomiso(s) registrado(s))"
-                    for e in errs_batch:
-                        st.warning(e)
-            st.session_state.pop(f"_scan_alumno_{key_scan}", None)
-            limpiar_escaner(key_scan)
-            guardar_toast(msg, "ok")
+    # 2. Si es Ver perfil
+    if st.session_state["scan_accion"] == "ver":
+        if st.button("← Volver", key="back_ver"):
+            st.session_state.pop("scan_accion", None)
             st.rerun()
+        _render_alumno_perfil(al, compact=False)
+        return
 
-# PERFIL ALUMNO
+    # 3. Si es Registrar -> Preguntar si es Incidencia o Decomiso
+    if st.session_state["scan_accion"] == "registrar":
+        if "scan_tipo" not in st.session_state:
+            st.subheader("¿Qué deseas registrar?")
+            c1, c2 = st.columns(2)
+            if c1.button("Incidencia", type="primary", use_container_width=True):
+                st.session_state["scan_tipo"] = "incidencia"
+                st.rerun()
+            if c2.button("Decomiso", type="primary", use_container_width=True):
+                st.session_state["scan_tipo"] = "decomiso"
+                st.rerun()
+            if st.button("← Volver", key="back_reg"):
+                st.session_state.pop("scan_accion", None)
+                st.rerun()
+            return
+
+        # 3.1 Formulario de Incidencia
+        if st.session_state["scan_tipo"] == "incidencia":
+            st.subheader("Registrar Incidencia")
+            if st.button("← Volver", key="back_inc"):
+                st.session_state.pop("scan_tipo", None)
+                st.rerun()
+            
+            with st.form("form_inc_scan"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    fecha = st.date_input("Fecha", value=ahora().date())
+                    tipo_inc = st.selectbox("Gravedad", TIPOS_INCIDENCIA)
+                with c2:
+                    categoria = st.selectbox("Categoría", CATEGORIAS)
+                    reportado = st.text_input("Reportado por", value=st.session_state["user"]["nombres"])
+                
+                descripcion = st.text_area("Descripción *")
+                
+                requiere_acta = st.checkbox("¿Requiere acta?")
+                tipo_acta = None
+                if requiere_acta:
+                    tipo_acta = st.radio("Tipo de acta", ["alumno", "alumno_apoderado"], horizontal=True)
+                
+                sub = st.form_submit_button("Guardar Incidencia", type="primary")
+                
+                if sub:
+                    if not descripcion.strip(): 
+                        st.error("Descripción obligatoria.")
+                    else:
+                        ok, msg, inc_id = crear_incidencia(al["id"], fecha.strftime("%Y-%m-%d"), tipo_inc, categoria, descripcion.strip(), reportado.strip(), requiere_acta, tipo_acta, st.session_state["user"])
+                        if ok:
+                            # Se limpia todo para que puedas escanear otro o ver la incidencia
+                            st.session_state.pop("scan_accion", None)
+                            st.session_state.pop("scan_tipo", None)
+                            guardar_toast(msg, "ok")
+                            st.rerun()
+                        else: 
+                            st.error(msg)
+
+        # 3.2 Formulario de Decomiso
+        elif st.session_state["scan_tipo"] == "decomiso":
+            st.subheader("Registrar Decomiso")
+            if st.button("← Volver", key="back_dec"):
+                st.session_state.pop("scan_tipo", None)
+                st.rerun()
+            
+            with st.form("form_dec_scan"):
+                st.markdown("**Objetos a decomisar**")
+                objetos = []
+                for i in range(3):
+                    c1, c2, c3 = st.columns([3, 2, 4])
+                    with c1: 
+                        obj = st.text_input(f"Objeto {i+1}", key=f"scan_dec_obj_{i}", placeholder="Celular, cartera...")
+                    with c2: 
+                        f_lim = st.date_input(f"Fecha de devolución {i+1}", value=ahora().date() + timedelta(days=3), key=f"scan_dec_fl_{i}")
+                    with c3: 
+                        desc = st.text_input(f"Descripción {i+1}", key=f"scan_dec_desc_{i}", placeholder="Marca, color...")
+                    if obj.strip():
+                        objetos.append({"objeto": obj.strip(), "fecha_limite": f_lim.strftime("%Y-%m-%d"), "descripcion": desc.strip()})
+                
+                sub = st.form_submit_button("Guardar Decomisos", type="primary")
+                if sub:
+                    if not objetos: 
+                        st.error("Agrega al menos un objeto.")
+                    else:
+                        n, errs = crear_decomisos_batch(al["id"], None, objetos, st.session_state["user"])
+                        if n:
+                            st.session_state.pop("scan_accion", None)
+                            st.session_state.pop("scan_tipo", None)
+                            guardar_toast(f"{n} decomiso(s) registrado(s).", "ok")
+                            st.rerun()
+                        for e in errs: 
+                            st.warning(e)
+
+# ==========================================
+# PERFIL ALUMNO Y OTRAS VISTAS
+# ==========================================
 def _render_alumno_perfil(al, compact=False, key_scan=None):
     idal = al["id"]
-    nombre = (al['apellido_paterno'] + " " + (al['apellido_materno'] or "") +
-              ", " + al['nombres'])
+    nombre = (al['apellido_paterno'] + " " + (al['apellido_materno'] or "") + ", " + al['nombres'])
     inicial = (al['apellido_paterno'] or al['nombres'] or "?")[0].upper()
     estado_txt = "ACTIVO" if al.get("activo", 1) else "INACTIVO"
-
+    
     st.markdown(f"""
     <div class="alumno-hero">
         <div class="hero-avatar">{inicial}</div>
@@ -1477,19 +1474,14 @@ def _render_alumno_perfil(al, compact=False, key_scan=None):
     if compact:
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("Ver perfil completo", type="primary",
-                         use_container_width=True, key="ver_full_perfil"):
+            if st.button("Ver perfil completo", type="primary", use_container_width=True, key="ver_full_perfil"):
                 st.session_state["alumno_perfil_id"] = idal
                 st.session_state["_ir_a_menu"] = "Alumnos"
-                if key_scan:
-                    st.session_state.pop(f"_scan_alumno_{key_scan}", None)
-                    limpiar_escaner(key_scan)
                 st.rerun()
         with c2:
-            if st.button("Registrar incidencia", use_container_width=True,
-                         key="registrar_inc"):
-                # FIX #3: cambiar modo del escáner vía key intermedia
-                st.session_state["_ir_a_modo_scan"] = "Registrar incidencia"
+            if st.button("Registrar incidencia", use_container_width=True, key="registrar_inc"):
+                st.session_state["scan_accion"] = "registrar"
+                st.session_state["scan_tipo"] = "incidencia"
                 st.rerun()
         return
 
@@ -1594,6 +1586,7 @@ def _render_alumno_perfil(al, compact=False, key_scan=None):
 
     with tabs[2]:
         _render_editar_alumno(al)
+
 
 def _render_decomisos_tab(decomisos, idal):
     if decomisos.empty:
@@ -2825,6 +2818,7 @@ def vista_auditoria():
     st.write(f"**{len(df)} registros**")
     if not df.empty:
         st.dataframe(df, use_container_width=True, hide_index=True)
+
 def main():
     st.set_page_config(page_title="Incidencias TOECE",
                        page_icon="📋", layout="wide",
