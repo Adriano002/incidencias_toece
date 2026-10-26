@@ -1750,6 +1750,10 @@ def vista_alumnos():
         _render_alumno_perfil(al)
         return
 
+    # FIX: Procesar bandera ANTES de que se dibuje el radio
+    if st.session_state.pop("_al_pendiente_ir_a_importar", False):
+        st.session_state["al_vista_radio"] = "Importar Excel"
+
     # FIX #5: una sola fuente de verdad (la key del radio)
     if "al_vista_radio" not in st.session_state:
         st.session_state["al_vista_radio"] = "Buscar"
@@ -1769,7 +1773,6 @@ def vista_alumnos():
         _al_crear()
     else:
         _al_importar()
-
 def _al_buscar():
     st.subheader("Buscar alumno")
     c1, c2, c3 = st.columns([3, 1, 1])
@@ -1891,14 +1894,13 @@ def _al_importar():
                     st.dataframe(pd.DataFrame(st.session_state["_al_err"]),
                                  use_container_width=True)
             if st.session_state["_al_val"]:
-                # FIX #8: nueva firma con tupla
                 if pedir_password_critica("al_imp", "Importar válidas")[0]:
                     ins, reac, errs = insertar_alumnos_validos(
                         st.session_state["_al_val"])
                     for k in ["_al_val", "_al_err", "_al_res"]:
                         st.session_state.pop(k, None)
-                    # FIX #5
-                    st.session_state["al_vista_radio"] = "Importar Excel"
+                    # Bandera para cambiar la vista en el siguiente rerun sin romper Streamlit
+                    st.session_state["_al_pendiente_ir_a_importar"] = True
                     guardar_toast(f"{ins} nuevos, {reac} actualizados.")
                     st.rerun()
 
