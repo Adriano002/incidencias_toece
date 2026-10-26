@@ -9,16 +9,18 @@ import time
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
-from firma_component import firma_widget, firma_guardada, limpiar_firma, tiene_firma
+
 import pandas as pd
 import qrcode
 import streamlit as st
+from firma_component import firma_widget, firma_guardada, limpiar_firma, tiene_firma
 from qr_scanner_component import qr_scanner
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as pdfcanvas
+
 LOG_DIR = Path("logs"); LOG_DIR.mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -50,20 +52,26 @@ COLOR_AZUL_SOFT = "rgba(10,61,145,.08)"
 COLOR_AZUL_BORDER = "rgba(10,61,145,.25)"
 COLOR_AZUL_LIGHT = "#E8EFF9"
 
+# UTILIDADES
 def ahora():
     return datetime.now(timezone.utc) - timedelta(hours=5)
+
 
 def hoy_str():
     return ahora().strftime("%Y-%m-%d")
 
+
 def hora_str():
     return ahora().strftime("%H:%M:%S")
+
 
 def hora_corta():
     return ahora().strftime("%H:%M")
 
+
 def timestamp_str():
     return ahora().strftime("%Y-%m-%d %H:%M:%S")
+
 
 def mask_dni(dni):
     d = str(dni or "").strip()
@@ -71,16 +79,15 @@ def mask_dni(dni):
         return "****"
     return d[:4] + "*" * (len(d) - 4)
 
-
 def _nombre_archivo_acta(incidencia, alumno):
     def _limpiar(txt):
         if not txt:
             return "SinDato"
         txt = str(txt).strip()
         reemplazos = {
-            "á":"a","é":"e","í":"i","ó":"o","ú":"u",
-            "Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U",
-            "ñ":"n","Ñ":"N","ü":"u","Ü":"U",
+            "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u",
+            "Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U",
+            "ñ": "n", "Ñ": "N", "ü": "u", "Ü": "U",
         }
         for k, v in reemplazos.items():
             txt = txt.replace(k, v)
@@ -94,12 +101,14 @@ def _nombre_archivo_acta(incidencia, alumno):
     fecha = (incidencia.get("fecha") if incidencia else None) or hoy_str()
     return f"Acta_{ap_p}_{ap_m}_{nombres}_{fecha}.pdf"
 
+
 def dias_desde(fecha_str):
     try:
         f = datetime.strptime(fecha_str, "%Y-%m-%d").date()
         return (ahora().date() - f).days
     except Exception:
         return 0
+
 
 def dias_hasta(fecha_str):
     try:
@@ -108,6 +117,7 @@ def dias_hasta(fecha_str):
     except Exception:
         return 0
 
+# BASE DE DATOS 
 @st.cache_resource
 def _conn():
     con = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -116,12 +126,15 @@ def _conn():
     con.execute("PRAGMA foreign_keys=ON")
     return con
 
+
 def conn():
     return _conn()
+
 
 def leer_df(q, params=None):
     con = conn()
     return pd.read_sql_query(q, con, params=params or [])
+
 
 def ejecutar(q, params=None):
     with DB_LOCK:
@@ -130,8 +143,10 @@ def ejecutar(q, params=None):
         con.commit()
         return cur
 
+
 def escribir(q, params=None):
     ejecutar(q, params)
+
 
 def aplicar_schema():
     con = conn()
@@ -252,6 +267,7 @@ def inicializar():
     _seed()
     return True
 
+# AUTH
 def hashear_password(p):
     salt = secrets.token_bytes(16)
     d = hashlib.pbkdf2_hmac(PBK_ALG, p.encode("utf-8"), salt, PBK_ITER)
@@ -262,7 +278,7 @@ def verificar_password(p, h):
         try:
             _, it, salt_hex, hash_hex = h.split("$")
             d = hashlib.pbkdf2_hmac(PBK_ALG, p.encode("utf-8"),
-                                     bytes.fromhex(salt_hex), int(it))
+                                    bytes.fromhex(salt_hex), int(it))
             return secrets.compare_digest(d.hex(), hash_hex)
         except (ValueError, TypeError):
             return False
@@ -307,6 +323,7 @@ def autenticar(usuario, password):
     u["ultimo_login"] = timestamp_str()
     return u, ""
 
+
 def auditar(usuario, accion, tb=None, rid=None):
     try:
         escribir("INSERT INTO auditoria(usuario,accion,fecha,tabla_afectada,"
@@ -316,24 +333,28 @@ def auditar(usuario, accion, tb=None, rid=None):
         log.warning("audit: %s", e)
 
 def pedir_password_critica(clave, texto_boton="Confirmar",
-                            texto_input="Contraseña de Admin o Direccion"):
+                           texto_input="Contraseña de Admin o Direccion"):
     """
     IMPORTANTE: usar SOLO fuera de un st.form().
+    FIX #8: retorna tupla (autorizado, usuario_autorizador).
     """
     pwd = st.text_input(texto_input, type="password", key="pwd_crit_" + clave)
     conf = st.checkbox("Confirmo esta accion", key="conf_crit_" + clave)
     if st.button(texto_boton, type="primary", key="btn_crit_" + clave,
                  disabled=not conf):
         if not pwd:
-            st.error("Ingresa la contraseña."); return False
+            st.error("Ingresa la contraseña."); return False, None
         con = conn()
-        cur = con.execute("SELECT password FROM usuarios "
+        cur = con.execute("SELECT usuario, password FROM usuarios "
                           "WHERE rol IN ('Admin','Direccion') AND activo=1")
-        if not any(verificar_password(pwd, r["password"]) for r in cur.fetchall()):
-            st.error("Contraseña incorrecta."); return False
-        return True
-    return False
+        for r in cur.fetchall():
+            if verificar_password(pwd, r["password"]):
+                auditar(r["usuario"], f"Autorizó acción crítica: {clave}")
+                return True, r["usuario"]
+        st.error("Contraseña incorrecta."); return False, None
+    return False, None
 
+# TOASTS 
 def mostrar_toast_pendiente():
     t = st.session_state.pop("_toast_msg", None)
     if t:
@@ -344,9 +365,11 @@ def mostrar_toast_pendiente():
         else:
             st.error(t.get("msg"))
 
+
 def guardar_toast(msg, tipo="ok"):
     st.session_state["_toast_msg"] = {"msg": msg, "tipo": tipo}
 
+# ESTILOS 
 def aplicar_estilos():
     st.markdown("""
     <style>
@@ -696,11 +719,13 @@ def aplicar_estilos():
     </style>
     """, unsafe_allow_html=True)
 
+# HELPERS ALUMNOS 
 def obtener_grados():
     df = leer_df("""SELECT DISTINCT grado FROM alumnos
                     WHERE activo=1 AND grado IS NOT NULL AND grado!=''
                     ORDER BY grado""")
     return [""] + df["grado"].tolist()
+
 
 def obtener_secciones(grado=""):
     if grado:
@@ -712,154 +737,18 @@ def obtener_secciones(grado=""):
                         WHERE activo=1 AND seccion IS NOT NULL
                         AND seccion!='' ORDER BY seccion""")
     return [""] + df["seccion"].tolist()
+
 def buscar_alumno_por_dni(dni):
     con = conn()
     cur = con.execute("SELECT * FROM alumnos WHERE dni=? AND activo=1", (dni,))
     f = cur.fetchone()
     return dict(f) if f else None
 
-def componente_escaner(key):
-    mount_id = st.session_state.get(f"_qr_mount_{key}", 0)
-    result = qr_scanner(key=f"qr_{key}_{mount_id}", on_scan=lambda: None)
-    if result is not None and getattr(result, "qr_dni", None):
-        return str(result.qr_dni).strip()
-    return None
 
-def escaner_widget(key="escaner"):
-    dni = componente_escaner(key)
-    if not dni:
-        return None
-    procesado_key = f"_qr_procesado_{key}"
-    ult = st.session_state.get(procesado_key, {})
-    if ult.get("dni") == dni and (time.time() - ult.get("ts", 0)) < 3.0:
-        return None
-    st.session_state[procesado_key] = {"dni": dni, "ts": time.time()}
-    st.session_state[f"_qr_mount_{key}"] = \
-        st.session_state.get(f"_qr_mount_{key}", 0) + 1
-    al = buscar_alumno_por_dni(dni)
-    if al:
-        return al
-    st.error(f"No hay alumno con DNI {mask_dni(dni)}")
-    return None
+def _escape_like(s):
+    # FIX #12
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
-def limpiar_escaner(key):
-    st.session_state.pop(f"_qr_procesado_{key}", None)
-    st.session_state.pop(f"_ult_qr_{key}", None)
-    st.session_state.pop(f"_scan_alumno_{key}", None)
-def vista_login():
-    st.markdown(f"""
-    <div style="text-align:center; margin-top:80px; margin-bottom:36px;">
-        <h1 style="font-size:40px; margin-bottom:0; border:none;
-                   color:{COLOR_AZUL}; letter-spacing:-1.5px;">incidencias</h1>
-        <p style="opacity:0.65; margin-top:6px; font-size:14px;">
-            Sistema de Incidencias Escolares — TOECE
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    _, centro, _ = st.columns([1, 1, 1])
-    with centro:
-        with st.form("login"):
-            usuario = st.text_input("Usuario", placeholder="tu usuario")
-            password = st.text_input("Contraseña", type="password",
-                                     placeholder="tu contraseña")
-            enviado = st.form_submit_button("Ingresar", type="primary",
-                                            use_container_width=True)
-            if enviado:
-                datos, err = autenticar(usuario, password)
-                if datos:
-                    st.session_state["user"] = datos
-                    auditar(datos["usuario"], "Login")
-                    st.rerun()
-                else:
-                    st.error(err or "Credenciales incorrectas")
-
-def cerrar_sesion():
-    u = st.session_state.get("user")
-    if u:
-        auditar(u["usuario"], "Logout")
-    for k in list(st.session_state.keys()):
-        del st.session_state[k]
-
-def vista_mi_cuenta():
-    mostrar_toast_pendiente()
-    st.title("Mi cuenta")
-    u = st.session_state["user"]
-    inicial = (u["nombres"] or "?")[0].upper()
-    st.markdown(f"""
-    <div class="alumno-hero" style="margin-bottom:22px;">
-        <div class="hero-avatar">{inicial}</div>
-        <div class="hero-info">
-            <div class="hero-nombre">{u['nombres']}</div>
-            <div class="hero-meta">
-                Usuario: {u['usuario']} &nbsp;|&nbsp; Rol: {u['rol']}
-            </div>
-            <div class="hero-meta">
-                Último login: {u.get('ultimo_login') or 'Nunca'}
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.markdown('<div class="card"><div class="card-title">Cambiar contraseña</div>',
-                unsafe_allow_html=True)
-    with st.form("cambiar_pwd"):
-        actual = st.text_input("Contraseña actual", type="password")
-        nueva = st.text_input("Nueva contraseña", type="password")
-        confirmar = st.text_input("Confirmar nueva", type="password")
-        if st.form_submit_button("Cambiar", type="primary"):
-            if not verificar_password(actual, u["password"]):
-                st.error("Contraseña actual incorrecta.")
-            elif len(nueva) < 6:
-                st.error("Mínimo 6 caracteres.")
-            elif nueva != confirmar:
-                st.error("No coinciden.")
-            else:
-                h = hashear_password(nueva)
-                escribir("UPDATE usuarios SET password=? WHERE id=?", (h, u["id"]))
-                st.session_state["user"]["password"] = h
-                auditar(u["usuario"], "Cambio su contraseña")
-                guardar_toast("Contraseña actualizada.")
-                st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def obtener_opciones_por_rol(u):
-    rol = u["rol"]
-    if rol == "Admin":
-        return ["Escaner QR", "Incidencias", "Decomisos", "Alumnos", "Actas",
-                "Reportes", "Usuarios", "Auditoria", "Mi cuenta"]
-    if rol == "Direccion":
-        return ["Escaner QR", "Incidencias", "Decomisos", "Alumnos", "Actas",
-                "Reportes", "Mi cuenta"]
-    if rol == "Auxiliar":
-        return ["Escaner QR", "Incidencias", "Decomisos", "Alumnos",
-                "Reportes", "Mi cuenta"]
-    return []
-
-def menu_lateral():
-    u = st.session_state["user"]
-    rol = u["rol"]
-    opciones = obtener_opciones_por_rol(u)
-
-    with st.sidebar:
-        inicial = (u["nombres"] or "?")[0].upper()
-        st.markdown(
-            f'<div class="sidebar-header">'
-            f'<div class="avatar">{inicial}</div>'
-            f'<div class="nombre">{u["nombres"]}</div>'
-            f'<div class="rol">{rol}</div>'
-            f'</div>', unsafe_allow_html=True)
-
-        pendiente = st.session_state.pop("_ir_a_menu", None)
-        if pendiente and pendiente in opciones:
-            st.session_state["menu"] = pendiente
-
-        if "menu" not in st.session_state or st.session_state["menu"] not in opciones:
-            st.session_state["menu"] = opciones[0]
-
-        op = st.radio("Menu", opciones, key="menu", label_visibility="collapsed")
-        st.markdown("---")
-        if st.button("Cerrar sesión", use_container_width=True):
-            cerrar_sesion(); st.rerun()
-    return op
 def buscar_alumnos(texto="", grado="", seccion="", dni="", limite=300):
     q = """SELECT id,dni,nombres,apellido_paterno,apellido_materno,
            grado,seccion,turno,nombre_apoderado,telefono_apoderado,
@@ -868,12 +757,12 @@ def buscar_alumnos(texto="", grado="", seccion="", dni="", limite=300):
     p = []
     if texto:
         for w in [x.strip() for x in texto.split() if x.strip()]:
-            q += (" AND (nombres LIKE ? OR apellido_paterno LIKE ? "
-                  "OR apellido_materno LIKE ?)")
-            pat = f"%{w}%"
+            q += (" AND (nombres LIKE ? ESCAPE '\\' OR apellido_paterno LIKE ? ESCAPE '\\' "
+                  "OR apellido_materno LIKE ? ESCAPE '\\')")
+            pat = f"%{_escape_like(w)}%"
             p += [pat, pat, pat]
     if dni:
-        q += " AND dni LIKE ?"; p.append(f"%{dni}%")
+        q += " AND dni LIKE ? ESCAPE '\\'"; p.append(f"%{_escape_like(dni)}%")
     if grado:
         q += " AND grado = ?"; p.append(grado)
     if seccion:
@@ -910,15 +799,18 @@ def editar_alumno(idal, grado, seccion, turno, apo_n, apo_t,
     auditar(usuario["usuario"], f"Edito alumno id={idal}", "alumnos", idal)
     return True, "Alumno editado."
 
+
 def retirar_alumno(idal, usuario):
     escribir("UPDATE alumnos SET activo=0 WHERE id=?", (idal,))
     auditar(usuario["usuario"], f"Desactivo alumno id={idal}", "alumnos", idal)
     return True, "Alumno desactivado."
 
+
 def reactivar_alumno(idal, usuario):
     escribir("UPDATE alumnos SET activo=1 WHERE id=?", (idal,))
     auditar(usuario["usuario"], f"Reactivo alumno id={idal}", "alumnos", idal)
     return True, "Alumno reactivado."
+
 
 def _obtener_alumno(al_id):
     con = conn()
@@ -926,6 +818,7 @@ def _obtener_alumno(al_id):
     f = cur.fetchone()
     return dict(f) if f else None
 
+# INCIDENCIAS
 def crear_incidencia(alumno_id, fecha, tipo, categoria, descripcion,
                      reportado_por, requiere_acta, tipo_acta, usuario):
     cur = ejecutar("""INSERT INTO incidencias(alumno_id,fecha,hora,tipo,categoria,
@@ -941,6 +834,7 @@ def crear_incidencia(alumno_id, fecha, tipo, categoria, descripcion,
             "incidencias", inc_id)
     return True, "Incidencia registrada.", inc_id
 
+
 def cambiar_estado_incidencia(inc_id, nuevo_estado, usuario):
     escribir("UPDATE incidencias SET estado=? WHERE id=?",
              (nuevo_estado, inc_id))
@@ -948,6 +842,7 @@ def cambiar_estado_incidencia(inc_id, nuevo_estado, usuario):
             f"Cambio estado incidencia id={inc_id} a {nuevo_estado}",
             "incidencias", inc_id)
     return True, "Estado actualizado."
+
 
 def eliminar_incidencia(inc_id, usuario):
     con = conn()
@@ -961,15 +856,17 @@ def eliminar_incidencia(inc_id, usuario):
             "incidencias", inc_id)
     return True, "Incidencia eliminada."
 
+
 def _obtener_incidencia(inc_id):
     con = conn()
     cur = con.execute("SELECT * FROM incidencias WHERE id=?", (inc_id,))
     f = cur.fetchone()
     return dict(f) if f else None
-    
+
+
+# DECOMISOS
 def crear_decomiso(alumno_id, incidencia_id, objeto, descripcion,
                    fecha_limite, usuario):
-    """Crea un decomiso individual. Valida fecha límite futura."""
     if fecha_limite:
         try:
             fl = datetime.strptime(fecha_limite, "%Y-%m-%d").date()
@@ -989,8 +886,8 @@ def crear_decomiso(alumno_id, incidencia_id, objeto, descripcion,
             "decomisos")
     return True, f"Decomiso de '{objeto}' registrado."
 
+
 def crear_decomisos_batch(alumno_id, incidencia_id, lista_objetos, usuario):
-    """Crea varios decomisos a la vez. Valida cada fecha."""
     creados = 0
     errores = []
     for o in lista_objetos:
@@ -1026,6 +923,7 @@ def devolver_decomiso(dec_id, devuelto_a, observaciones, usuario):
             "decomisos", dec_id)
     return True, f"Decomiso de '{d['objeto']}' devuelto."
 
+
 def cambiar_estado_decomiso(dec_id, nuevo_estado, usuario):
     escribir("UPDATE decomisos SET estado=? WHERE id=?",
              (nuevo_estado, dec_id))
@@ -1034,6 +932,7 @@ def cambiar_estado_decomiso(dec_id, nuevo_estado, usuario):
             "decomisos", dec_id)
     return True, "Estado actualizado."
 
+
 def listar_decomisos_alumno(alumno_id):
     return leer_df("""SELECT id, fecha_decomiso, hora_decomiso, objeto,
                       descripcion, retenido_por, fecha_limite, estado,
@@ -1041,6 +940,7 @@ def listar_decomisos_alumno(alumno_id):
                       FROM decomisos WHERE alumno_id=?
                       ORDER BY estado!='Devuelto', fecha_decomiso DESC""",
                    (alumno_id,))
+
 
 def listar_decomisos_activos():
     return leer_df("""SELECT d.id, d.fecha_decomiso, d.hora_decomiso,
@@ -1052,6 +952,7 @@ def listar_decomisos_activos():
                       WHERE d.estado != 'Devuelto'
                       ORDER BY d.fecha_decomiso DESC""")
 
+
 def listar_decomisos_todos():
     return leer_df("""SELECT d.id, d.fecha_decomiso, d.hora_decomiso,
                       d.objeto, d.descripcion, d.fecha_limite, d.estado,
@@ -1062,6 +963,7 @@ def listar_decomisos_todos():
                       FROM decomisos d JOIN alumnos al ON d.alumno_id=al.id
                       ORDER BY d.estado='Devuelto', d.fecha_decomiso DESC""")
 
+
 def actualizar_vencidos():
     try:
         escribir("""UPDATE decomisos SET estado='Vencido'
@@ -1071,6 +973,8 @@ def actualizar_vencidos():
     except Exception as e:
         log.warning("actualizar_vencidos: %s", e)
 
+
+# PDF ACTA 
 def _wrap_text(texto, ancho):
     palabras = str(texto).split()
     lineas = []
@@ -1232,7 +1136,6 @@ def crear_acta_doble(incidencia_id, firmante, firma_alumno, firma_apoderado,
         return False, "Incidencia no encontrada."
     inc = dict(inc)
 
-    # FIX: Validar que la incidencia requiera acta
     if not inc.get("requiere_acta"):
         return False, ("Esta incidencia no requiere acta. "
                        "Si necesitas firmar una, marca 'requiere acta' primero.")
@@ -1275,6 +1178,7 @@ def crear_acta_doble(incidencia_id, firmante, firma_alumno, firma_apoderado,
             "actas", incidencia_id)
     return True, "Acta firmada y PDF generado."
 
+
 def actas_de_incidencia(inc_id):
     return leer_df("""SELECT id,tipo,firmante_nombre,firmado_en,
                       observaciones,nombre_alumno,nombre_apoderado,
@@ -1282,9 +1186,167 @@ def actas_de_incidencia(inc_id):
                       FROM actas
                       WHERE incidencia_id=? ORDER BY id""", (inc_id,))
 
+# ESCANER 
+def componente_escaner(key):
+    mount_id = st.session_state.get(f"_qr_mount_{key}", 0)
+    result = qr_scanner(key=f"qr_{key}_{mount_id}", on_scan=lambda: None)
+    if result is not None and getattr(result, "qr_dni", None):
+        return str(result.qr_dni).strip()
+    return None
+
+
+def escaner_widget(key="escaner"):
+    dni = componente_escaner(key)
+    if not dni:
+        return None
+    procesado_key = f"_qr_procesado_{key}"
+    ult = st.session_state.get(procesado_key, {})
+    if ult.get("dni") == dni and (time.time() - ult.get("ts", 0)) < 3.0:
+        return None
+    st.session_state[procesado_key] = {"dni": dni, "ts": time.time()}
+    st.session_state[f"_qr_mount_{key}"] = \
+        st.session_state.get(f"_qr_mount_{key}", 0) + 1
+    al = buscar_alumno_por_dni(dni)
+    if al:
+        return al
+    st.error(f"No hay alumno con DNI {mask_dni(dni)}")
+    return None
+
+
+def limpiar_escaner(key):
+    st.session_state.pop(f"_qr_procesado_{key}", None)
+    st.session_state.pop(f"_ult_qr_{key}", None)
+    st.session_state.pop(f"_scan_alumno_{key}", None)
+
+# LOGIN
+def vista_login():
+    st.markdown(f"""
+    <div style="text-align:center; margin-top:80px; margin-bottom:36px;">
+        <h1 style="font-size:40px; margin-bottom:0; border:none;
+                   color:{COLOR_AZUL}; letter-spacing:-1.5px;">incidencias</h1>
+        <p style="opacity:0.65; margin-top:6px; font-size:14px;">
+            Sistema de Incidencias Escolares — TOECE
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    _, centro, _ = st.columns([1, 1, 1])
+    with centro:
+        with st.form("login"):
+            usuario = st.text_input("Usuario", placeholder="tu usuario")
+            password = st.text_input("Contraseña", type="password",
+                                     placeholder="tu contraseña")
+            enviado = st.form_submit_button("Ingresar", type="primary",
+                                            use_container_width=True)
+            if enviado:
+                datos, err = autenticar(usuario, password)
+                if datos:
+                    st.session_state["user"] = datos
+                    auditar(datos["usuario"], "Login")
+                    st.rerun()
+                else:
+                    st.error(err or "Credenciales incorrectas")
+
+
+def cerrar_sesion():
+    u = st.session_state.get("user")
+    if u:
+        auditar(u["usuario"], "Logout")
+    for k in list(st.session_state.keys()):
+        del st.session_state[k]
+
+
+def vista_mi_cuenta():
+    mostrar_toast_pendiente()
+    st.title("Mi cuenta")
+    u = st.session_state["user"]
+    inicial = (u["nombres"] or "?")[0].upper()
+    st.markdown(f"""
+    <div class="alumno-hero" style="margin-bottom:22px;">
+        <div class="hero-avatar">{inicial}</div>
+        <div class="hero-info">
+            <div class="hero-nombre">{u['nombres']}</div>
+            <div class="hero-meta">
+                Usuario: {u['usuario']} &nbsp;|&nbsp; Rol: {u['rol']}
+            </div>
+            <div class="hero-meta">
+                Último login: {u.get('ultimo_login') or 'Nunca'}
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown('<div class="card"><div class="card-title">Cambiar contraseña</div>',
+                unsafe_allow_html=True)
+    with st.form("cambiar_pwd"):
+        actual = st.text_input("Contraseña actual", type="password")
+        nueva = st.text_input("Nueva contraseña", type="password")
+        confirmar = st.text_input("Confirmar nueva", type="password")
+        if st.form_submit_button("Cambiar", type="primary"):
+            if not verificar_password(actual, u["password"]):
+                st.error("Contraseña actual incorrecta.")
+            elif len(nueva) < 6:
+                st.error("Mínimo 6 caracteres.")
+            elif nueva != confirmar:
+                st.error("No coinciden.")
+            else:
+                h = hashear_password(nueva)
+                escribir("UPDATE usuarios SET password=? WHERE id=?", (h, u["id"]))
+                st.session_state["user"]["password"] = h
+                auditar(u["usuario"], "Cambio su contraseña")
+                guardar_toast("Contraseña actualizada.")
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def obtener_opciones_por_rol(u):
+    rol = u["rol"]
+    if rol == "Admin":
+        return ["Escaner QR", "Incidencias", "Decomisos", "Alumnos", "Actas",
+                "Reportes", "Usuarios", "Auditoria", "Mi cuenta"]
+    if rol == "Direccion":
+        return ["Escaner QR", "Incidencias", "Decomisos", "Alumnos", "Actas",
+                "Reportes", "Mi cuenta"]
+    if rol == "Auxiliar":
+        return ["Escaner QR", "Incidencias", "Decomisos", "Alumnos",
+                "Reportes", "Mi cuenta"]
+    return []
+
+
+def menu_lateral():
+    u = st.session_state["user"]
+    rol = u["rol"]
+    opciones = obtener_opciones_por_rol(u)
+
+    with st.sidebar:
+        inicial = (u["nombres"] or "?")[0].upper()
+        st.markdown(
+            f'<div class="sidebar-header">'
+            f'<div class="avatar">{inicial}</div>'
+            f'<div class="nombre">{u["nombres"]}</div>'
+            f'<div class="rol">{rol}</div>'
+            f'</div>', unsafe_allow_html=True)
+
+        pendiente = st.session_state.pop("_ir_a_menu", None)
+        if pendiente and pendiente in opciones:
+            st.session_state["menu"] = pendiente
+
+        if "menu" not in st.session_state or st.session_state["menu"] not in opciones:
+            st.session_state["menu"] = opciones[0]
+
+        op = st.radio("Menu", opciones, key="menu", label_visibility="collapsed")
+        st.markdown("---")
+        if st.button("Cerrar sesión", use_container_width=True):
+            cerrar_sesion(); st.rerun()
+    return op
+
+#VISTA ESCANER 
 def vista_escaner():
     mostrar_toast_pendiente()
     st.title("Escáner QR")
+
+    # FIX #3: aplicar cambio de modo pendiente ANTES del radio
+    pendiente_modo = st.session_state.pop("_ir_a_modo_scan", None)
+    if pendiente_modo:
+        st.session_state["scan_modo"] = pendiente_modo
 
     modo = st.radio(
         "Modo",
@@ -1298,11 +1360,9 @@ def vista_escaner():
     key_scan = "scan_" + modo.lower().replace(" ", "_")
     key_alumno = f"_scan_alumno_{key_scan}"
 
-    # FIX: al cambiar de modo, limpiar alumno guardado
     modo_prev = st.session_state.get("_scan_modo_prev")
     if modo_prev != modo:
         st.session_state["_scan_modo_prev"] = modo
-        # Limpiar TODOS los alumnos guardados de otros modos
         for k in list(st.session_state.keys()):
             if k.startswith("_scan_alumno_scan_"):
                 st.session_state.pop(k, None)
@@ -1333,14 +1393,15 @@ def vista_escaner():
     else:
         _incidencia_inline(al, key_scan)
 
+
 def _perfil_inline(idal, key_scan):
     al = _obtener_alumno(idal)
     if not al:
         st.warning("Alumno no encontrado."); return
     _render_alumno_perfil(al, compact=True, key_scan=key_scan)
 
+
 def _parse_decomisos(texto):
-    """Parsea líneas 'objeto | fecha_limite | descripcion'. Retorna (lista, errores)."""
     lista = []
     errores = []
     for i, linea in enumerate(texto.splitlines(), 1):
@@ -1374,14 +1435,14 @@ def _incidencia_inline(al, key_scan):
         with c2:
             categoria = st.selectbox("Categoria", CATEGORIAS)
             reportado = st.text_input("Reportado por",
-                                       value=st.session_state["user"]["nombres"])
+                                      value=st.session_state["user"]["nombres"])
         descripcion = st.text_area("Descripción *")
         requiere_acta = st.checkbox("¿Requiere acta?")
         tipo_acta = None
         if requiere_acta:
             tipo_acta = st.radio("Tipo de acta",
-                                 ["alumno", "apoderado", "alumno_apoderado"],
-                                 horizontal=True)
+                                ["alumno", "apoderado", "alumno_apoderado"],
+                                horizontal=True)
         requiere_decomiso = st.checkbox("¿Requiere decomiso?")
         decomisos_txt = ""
         if requiere_decomiso:
@@ -1389,8 +1450,8 @@ def _incidencia_inline(al, key_scan):
             st.caption("`Celular | 2026-01-20 | Samsung negro`")
             st.caption("Formato: **objeto | fecha_límite (YYYY-MM-DD) | descripción (opcional)**")
             decomisos_txt = st.text_area("Objetos decomisados",
-                                          key="scan_dec_txt",
-                                          height=120)
+                                         key="scan_dec_txt",
+                                         height=120)
         sub = st.form_submit_button("Registrar incidencia", type="primary")
 
     if sub:
@@ -1419,7 +1480,7 @@ def _incidencia_inline(al, key_scan):
             limpiar_escaner(key_scan)
             guardar_toast(msg, "ok")
             st.rerun()
-
+# PERFIL ALUMNO
 def _render_alumno_perfil(al, compact=False, key_scan=None):
     idal = al["id"]
     nombre = (al['apellido_paterno'] + " " + (al['apellido_materno'] or "") +
@@ -1456,6 +1517,8 @@ def _render_alumno_perfil(al, compact=False, key_scan=None):
         with c2:
             if st.button("Registrar incidencia", use_container_width=True,
                          key="registrar_inc"):
+                # FIX #3: cambiar modo del escáner vía key intermedia
+                st.session_state["_ir_a_modo_scan"] = "Registrar incidencia"
                 st.rerun()
         return
 
@@ -1561,7 +1624,6 @@ def _render_alumno_perfil(al, compact=False, key_scan=None):
     with tabs[2]:
         _render_editar_alumno(al)
 
-
 def _render_decomisos_tab(decomisos, idal):
     if decomisos.empty:
         st.info("Sin decomisos registrados para este alumno.")
@@ -1614,19 +1676,18 @@ def _render_decomisos_tab(decomisos, idal):
                         st.rerun()
                 with c2:
                     devuelto_a = st.text_input("Devuelto a",
-                                                key=f"dec_da_{d['id']}")
+                                               key=f"dec_da_{d['id']}")
                     obs_dev = st.text_input("Observaciones devolución",
-                                             key=f"dec_obs_{d['id']}")
+                                            key=f"dec_obs_{d['id']}")
                     if st.button("Marcar como DEVUELTO",
                                  type="primary", key=f"dec_dev_{d['id']}"):
                         ok, msg = devolver_decomiso(d["id"], devuelto_a,
-                                                     obs_dev, usuario)
+                                                    obs_dev, usuario)
                         if ok:
                             guardar_toast(msg)
                             st.rerun()
                         else:
                             st.error(msg)
-
 
 def _render_editar_alumno(al):
     idal = al["id"]
@@ -1637,15 +1698,15 @@ def _render_editar_alumno(al):
             grado = st.text_input("Grado", value=al.get("grado") or "")
             seccion = st.text_input("Sección", value=al.get("seccion") or "")
             turno = st.selectbox("Turno", ["", "Mañana", "Tarde"],
-                                  index=(["", "Mañana", "Tarde"].index(al["turno"])
-                                         if al.get("turno") in ["", "Mañana", "Tarde"] else 0))
+                                 index=(["", "Mañana", "Tarde"].index(al["turno"])
+                                        if al.get("turno") in ["", "Mañana", "Tarde"] else 0))
         with c2:
             apo_n = st.text_input("Apoderado",
-                                   value=al.get("nombre_apoderado") or "")
+                                  value=al.get("nombre_apoderado") or "")
             apo_t = st.text_input("Teléfono apoderado",
-                                   value=al.get("telefono_apoderado") or "")
+                                  value=al.get("telefono_apoderado") or "")
             email_apo = st.text_input("Email apoderado",
-                                       value=al.get("email_apoderado") or "")
+                                      value=al.get("email_apoderado") or "")
         direccion = st.text_input("Dirección", value=al.get("direccion") or "")
         fn = None
         if al.get("fecha_nacimiento"):
@@ -1674,8 +1735,7 @@ def _render_editar_alumno(al):
                 reactivar_alumno(idal, usuario)
                 guardar_toast("Alumno reactivado.")
                 st.rerun()
-
-
+# VISTA ALUMNOS 
 def vista_alumnos():
     mostrar_toast_pendiente()
     st.title("Alumnos")
@@ -1690,23 +1750,18 @@ def vista_alumnos():
         _render_alumno_perfil(al)
         return
 
-    # FIX: key separada para controlar la vista
-    if "al_vista_actual" not in st.session_state:
-        st.session_state["al_vista_actual"] = "Buscar"
+    # FIX #5: una sola fuente de verdad (la key del radio)
+    if "al_vista_radio" not in st.session_state:
+        st.session_state["al_vista_radio"] = "Buscar"
 
     opciones = ["Buscar", "Crear", "Importar Excel"]
-    idx = opciones.index(st.session_state["al_vista_actual"]) \
-          if st.session_state["al_vista_actual"] in opciones else 0
-
     vista_sel = st.radio(
         "Vista",
         opciones,
-        index=idx,
         horizontal=True,
         key="al_vista_radio",
         label_visibility="collapsed"
     )
-    st.session_state["al_vista_actual"] = vista_sel
 
     if vista_sel == "Buscar":
         _al_buscar()
@@ -1715,24 +1770,21 @@ def vista_alumnos():
     else:
         _al_importar()
 
-
 def _al_buscar():
     st.subheader("Buscar alumno")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns([3, 1, 1])
     with c1:
         f_nombre = st.text_input("Nombre o apellido", key="al_f_nom")
     with c2:
-        f_dni = st.text_input("DNI", key="al_f_dni")
-    with c3:
         grados = obtener_grados()
         f_grado = st.selectbox("Grado", grados, key="al_f_grado")
-    with c4:
+    with c3:
         secciones = obtener_secciones(f_grado)
         f_seccion = st.selectbox("Sección", secciones, key="al_f_sec")
     if st.button("Buscar", type="primary", key="al_buscar_btn"):
         st.session_state["_al_buscar"] = True
     if st.session_state.get("_al_buscar"):
-        df = buscar_alumnos(f_nombre, f_grado, f_seccion, f_dni, limite=500)
+        df = buscar_alumnos(f_nombre, f_grado, f_seccion, "", limite=500)
         st.write(f"**{len(df)} resultados**")
         if df.empty:
             st.info("Sin resultados.")
@@ -1750,7 +1802,6 @@ def _al_buscar():
                 if c2.button("Ver perfil", key="ver_al_" + str(al['id'])):
                     st.session_state["alumno_perfil_id"] = al["id"]; st.rerun()
 
-
 def _al_crear():
     st.subheader("Crear alumno")
     c1, c2 = st.columns(2)
@@ -1764,7 +1815,7 @@ def _al_crear():
         seccion = st.text_input("Sección", key="nu_sec")
         turno = st.selectbox("Turno", ["", "Mañana", "Tarde"], key="nu_tur")
         fecha_nac = st.date_input("Fecha de nacimiento", value=None,
-                                   key="nu_fnac")
+                                  key="nu_fnac")
     c3, c4 = st.columns(2)
     with c3:
         apo = st.text_input("Apoderado", key="nu_apo")
@@ -1780,27 +1831,26 @@ def _al_crear():
         else:
             fn = fecha_nac.strftime("%Y-%m-%d") if fecha_nac else None
             ok, msg = crear_alumno(dni.strip(), nom.strip(), pat.strip(),
-                                    mat.strip(), grado.strip(),
-                                    seccion.strip(), turno,
-                                    apo.strip(), tel.strip(),
-                                    direccion.strip(), fn,
-                                    email_apo.strip(),
-                                    st.session_state["user"])
+                                   mat.strip(), grado.strip(),
+                                   seccion.strip(), turno,
+                                   apo.strip(), tel.strip(),
+                                   direccion.strip(), fn,
+                                   email_apo.strip(),
+                                   st.session_state["user"])
             if ok:
-                # FIX: mantener "Crear" activa
-                st.session_state["al_vista_actual"] = "Crear"
+                # FIX #5
+                st.session_state["al_vista_radio"] = "Crear"
                 guardar_toast(msg)
                 st.rerun()
             else:
                 st.error(msg)
 
-
 def _al_importar():
     st.subheader("Importar alumnos desde Excel")
     st.caption("Columnas: DNI, Nombres, Apellido Paterno, Apellido Materno, "
                "Grado, Sección, Turno, Apoderado, Teléfono.")
     arch = st.file_uploader("Sube el Excel", type=["xlsx", "xls"],
-                             key="al_imp")
+                            key="al_imp")
     if arch:
         df = pd.read_excel(arch)
         st.write(f"{len(df)} filas detectadas.")
@@ -1841,70 +1891,14 @@ def _al_importar():
                     st.dataframe(pd.DataFrame(st.session_state["_al_err"]),
                                  use_container_width=True)
             if st.session_state["_al_val"]:
-                if pedir_password_critica("al_imp", "Importar válidas"):
+                # FIX #8: nueva firma con tupla
+                if pedir_password_critica("al_imp", "Importar válidas")[0]:
                     ins, reac, errs = insertar_alumnos_validos(
                         st.session_state["_al_val"])
                     for k in ["_al_val", "_al_err", "_al_res"]:
                         st.session_state.pop(k, None)
-                    # FIX: mantener "Importar Excel" activa
-                    st.session_state["al_vista_actual"] = "Importar Excel"
-                    guardar_toast(f"{ins} nuevos, {reac} actualizados.")
-                    st.rerun()
-
-
-def _al_importar():
-    st.subheader("Importar alumnos desde Excel")
-    st.caption("Columnas: DNI, Nombres, Apellido Paterno, Apellido Materno, "
-               "Grado, Sección, Turno, Apoderado, Teléfono.")
-    arch = st.file_uploader("Sube el Excel", type=["xlsx", "xls"],
-                             key="al_imp")
-    if arch:
-        df = pd.read_excel(arch)
-        st.write(f"{len(df)} filas detectadas.")
-        cols = list(df.columns)
-        with st.form("mapeo_al"):
-            c1, c2 = st.columns(2)
-            with c1:
-                m_dni = st.selectbox("DNI *", cols)
-                m_nom = st.selectbox("Nombres *", cols)
-                m_pat = st.selectbox("Apellido Paterno *", cols)
-                m_mat = st.selectbox("Apellido Materno", [""] + cols)
-            with c2:
-                m_gra = st.selectbox("Grado", [""] + cols)
-                m_sec = st.selectbox("Sección", [""] + cols)
-                m_tur = st.selectbox("Turno", [""] + cols)
-                m_apo = st.selectbox("Apoderado", [""] + cols)
-                m_tel = st.selectbox("Teléfono", [""] + cols)
-            validar = st.form_submit_button("Validar", type="primary")
-        if validar:
-            mapeo = {"dni": m_dni, "nombres": m_nom,
-                     "apellido_paterno": m_pat,
-                     "apellido_materno": m_mat, "grado": m_gra,
-                     "seccion": m_sec, "turno": m_tur,
-                     "apoderado_nombre": m_apo,
-                     "apoderado_telefono": m_tel}
-            val, errs, res = validar_importacion_alumnos(df, mapeo)
-            st.session_state["_al_val"] = val
-            st.session_state["_al_err"] = errs
-            st.session_state["_al_res"] = res
-        if "_al_res" in st.session_state:
-            r = st.session_state["_al_res"]
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total", r["total"])
-            c2.metric("Válidas", r["validas"])
-            c3.metric("Errores", r["errores"])
-            if st.session_state["_al_err"]:
-                with st.expander("Errores"):
-                    st.dataframe(pd.DataFrame(st.session_state["_al_err"]),
-                                 use_container_width=True)
-            if st.session_state["_al_val"]:
-                if pedir_password_critica("al_imp", "Importar válidas"):
-                    ins, reac, errs = insertar_alumnos_validos(
-                        st.session_state["_al_val"])
-                    for k in ["_al_val", "_al_err", "_al_res"]:
-                        st.session_state.pop(k, None)
-                    # FIX: mantener la vista "Importar Excel" activa
-                    st.session_state["al_vista"] = "Importar Excel"
+                    # FIX #5
+                    st.session_state["al_vista_radio"] = "Importar Excel"
                     guardar_toast(f"{ins} nuevos, {reac} actualizados.")
                     st.rerun()
 
@@ -1948,6 +1942,7 @@ def validar_importacion_alumnos(df, mapeo):
             errs.append({"fila": nf, "motivo": str(e)})
     return val, errs, {"total": len(df), "validas": len(val), "errores": len(errs)}
 
+
 def insertar_alumnos_validos(val):
     ins = reac = 0; errs = []
     con = conn()
@@ -1980,32 +1975,8 @@ def insertar_alumnos_validos(val):
                 errs.append(f"{mask_dni(d['dni'])}: {e}")
         con.commit()
     return ins, reac, errs
-def buscar_alumno_widget(clave):
-    st.write("**Buscar alumno**")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        texto = st.text_input("Nombre", key=clave + "_buscar")
-    with c2:
-        dni = st.text_input("DNI", key=clave + "_dni")
-    with c3:
-        grados = obtener_grados()
-        grado = st.selectbox("Grado", grados, key=clave + "_grado")
-    with c4:
-        secciones = obtener_secciones(grado)
-        seccion = st.selectbox("Sección", secciones, key=clave + "_sec")
-    df = buscar_alumnos(texto, grado, seccion, dni, limite=50)
-    if df.empty:
-        st.warning("Sin coincidencias."); return None
-    ops = {}
-    for _, r in df.iterrows():
-        nombre = (r['apellido_paterno'] + " " + (r['apellido_materno'] or "") +
-                  ", " + r['nombres'])
-        et = f"{nombre} - {r['grado'] or ''} {r['seccion'] or ''} - DNI {mask_dni(r['dni'])}"
-        ops[et] = r["id"]
-    sel = st.selectbox("Alumno", list(ops.keys()), key=clave + "_sel")
-    idal = ops[sel]
-    return _obtener_alumno(idal)
 
+#VISTA INCIDENCIAS 
 def vista_incidencias():
     mostrar_toast_pendiente()
     st.title("Incidencias")
@@ -2013,42 +1984,36 @@ def vista_incidencias():
     if pid:
         vista_detalle_incidencia(pid); return
 
-    # FIX: key separada para controlar la vista
-    if "inc_vista_actual" not in st.session_state:
-        st.session_state["inc_vista_actual"] = "Listar"
+    # FIX #5
+    if "inc_vista_radio" not in st.session_state:
+        st.session_state["inc_vista_radio"] = "Listar"
 
     opciones = ["Listar", "Crear"]
-    idx = opciones.index(st.session_state["inc_vista_actual"]) \
-          if st.session_state["inc_vista_actual"] in opciones else 0
-
     vista_sel = st.radio(
         "Vista",
         opciones,
-        index=idx,
         horizontal=True,
         key="inc_vista_radio",
         label_visibility="collapsed"
     )
-    st.session_state["inc_vista_actual"] = vista_sel
 
     if vista_sel == "Listar":
         _inc_listar()
     else:
         _inc_crear()
 
-
 def _inc_listar():
     c1, c2, c3 = st.columns([2, 2, 3])
     with c1:
         filtro_estado = st.selectbox("Estado", ["Todos"] + ESTADOS,
-                                      key="inc_f_estado")
+                                     key="inc_f_estado")
     with c2:
         filtro_tipo = st.selectbox("Tipo", ["Todos"] + TIPOS_INCIDENCIA,
-                                    key="inc_f_tipo")
+                                   key="inc_f_tipo")
     with c3:
         filtro_texto = st.text_input("Buscar alumno",
-                                      key="inc_f_texto",
-                                      placeholder="Nombre o DNI")
+                                     key="inc_f_texto",
+                                     placeholder="Nombre o DNI")
     q = """SELECT i.id, i.fecha, i.hora, i.tipo, i.categoria, i.estado,
            i.requiere_acta, i.tipo_acta, i.descripcion,
            al.id AS alumno_id,
@@ -2061,8 +2026,9 @@ def _inc_listar():
     if filtro_tipo != "Todos":
         q += " AND i.tipo=?"; p.append(filtro_tipo)
     if filtro_texto.strip():
-        pat = f"%{filtro_texto.strip()}%"
-        q += " AND (al.nombres LIKE ? OR al.apellido_paterno LIKE ? OR al.dni LIKE ?)"
+        pat = f"%{_escape_like(filtro_texto.strip())}%"
+        q += (" AND (al.nombres LIKE ? ESCAPE '\\' OR al.apellido_paterno LIKE ? ESCAPE '\\' "
+              "OR al.dni LIKE ? ESCAPE '\\')")
         p += [pat, pat, pat]
     q += " ORDER BY i.fecha DESC, i.hora DESC LIMIT 500"
     df = leer_df(q, p)
@@ -2090,7 +2056,6 @@ def _inc_listar():
                 if st.button("Ver detalle", key="ver_inc_" + str(r['id']),
                              use_container_width=True):
                     st.session_state["incidencia_ver_id"] = r["id"]; st.rerun()
-
 
 def _inc_crear():
     st.subheader("Nueva incidencia")
@@ -2121,7 +2086,7 @@ def _inc_crear():
                 value=st.session_state["user"]["nombres"],
                 key="inc_rep")
         descripcion = st.text_area("Descripción *", key="inc_desc",
-                                    placeholder="Describe lo ocurrido")
+                                   placeholder="Describe lo ocurrido")
         st.markdown("---")
         requiere_acta = st.checkbox("¿Requiere acta?", key="inc_req_acta")
         tipo_acta = None
@@ -2137,7 +2102,7 @@ def _inc_crear():
             st.caption("**objeto | fecha_límite (YYYY-MM-DD) | descripción**")
             st.caption("Ejemplo: `Celular | 2026-01-20 | Samsung negro`")
             decomisos_txt = st.text_area("Objetos decomisados",
-                                          key="inc_dec_txt", height=120)
+                                         key="inc_dec_txt", height=120)
         sub = st.form_submit_button("Registrar incidencia", type="primary")
     if sub:
         if not descripcion.strip():
@@ -2161,10 +2126,11 @@ def _inc_crear():
                         msg += f" ({n} decomiso(s) registrado(s))"
                     for e in errs_batch:
                         st.warning(e)
-            # FIX: mantener "Crear" activa
-            st.session_state["inc_vista_actual"] = "Crear"
+            # FIX #5
+            st.session_state["inc_vista_radio"] = "Crear"
             guardar_toast(msg)
             st.rerun()
+
 def vista_detalle_incidencia(inc_id):
     mostrar_toast_pendiente()
     if st.button("← Volver a incidencias", key="volver_inc"):
@@ -2192,6 +2158,7 @@ def vista_detalle_incidencia(inc_id):
     st.write(f"**Requiere acta:** "
              f"{'Sí (' + (r['tipo_acta'] or '') + ')' if r['requiere_acta'] else 'No'}")
 
+    # FIX #11: agregar retenido_por al SELECT
     decs = leer_df("""SELECT id,objeto,descripcion,fecha_decomiso,hora_decomiso,
                       fecha_limite,estado,fecha_devolucion,devuelto_a,retenido_por
                       FROM decomisos WHERE incidencia_id=?""", (inc_id,))
@@ -2206,8 +2173,8 @@ def vista_detalle_incidencia(inc_id):
     st.markdown("---")
     st.subheader("Cambiar estado")
     nuevo = st.selectbox("Estado", ESTADOS,
-                          index=ESTADOS.index(r["estado"]) if r["estado"] in ESTADOS else 0,
-                          key="inc_nuevo_estado")
+                         index=ESTADOS.index(r["estado"]) if r["estado"] in ESTADOS else 0,
+                         key="inc_nuevo_estado")
     if st.button("Actualizar estado", type="primary"):
         ok, msg = cambiar_estado_incidencia(inc_id, nuevo, st.session_state["user"])
         if ok:
@@ -2216,7 +2183,8 @@ def vista_detalle_incidencia(inc_id):
 
     st.markdown("---")
     st.subheader("Eliminar incidencia")
-    if pedir_password_critica(f"elim_inc_{inc_id}", "Eliminar incidencia"):
+    # FIX #8: nueva firma
+    if pedir_password_critica(f"elim_inc_{inc_id}", "Eliminar incidencia")[0]:
         ok, msg = eliminar_incidencia(inc_id, st.session_state["user"])
         st.session_state.pop("incidencia_ver_id", None)
         guardar_toast(msg)
@@ -2257,8 +2225,8 @@ def vista_detalle_incidencia(inc_id):
         st.caption("El acta se genera en PDF con las observaciones como contenido.")
         nombre_al_default = nombre
         nombre_alumno = st.text_input("Nombre del alumno firmante",
-                                       value=nombre_al_default,
-                                       key="det_nom_al")
+                                      value=nombre_al_default,
+                                      key="det_nom_al")
         st.caption("Firma del alumno")
         firma_alumno = firma_widget(key=f"firma_det_al_{inc_id}")
         st.markdown("---")
@@ -2299,8 +2267,183 @@ def vista_detalle_incidencia(inc_id):
                     st.rerun()
                 else:
                     st.error(msg)
+# BUSCAR ALUMNO WIDGET 
+def buscar_alumno_widget(clave):
+    st.write("**Buscar alumno**")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        texto = st.text_input("Nombre", key=clave + "_buscar")
+    with c2:
+        dni = st.text_input("DNI", key=clave + "_dni")
+    with c3:
+        grados = obtener_grados()
+        grado = st.selectbox("Grado", grados, key=clave + "_grado")
+    with c4:
+        secciones = obtener_secciones(grado)
+        seccion = st.selectbox("Sección", secciones, key=clave + "_sec")
+    df = buscar_alumnos(texto, grado, seccion, dni, limite=50)
+    if df.empty:
+        st.warning("Sin coincidencias."); return None
+    ops = {}
+    for _, r in df.iterrows():
+        nombre = (r['apellido_paterno'] + " " + (r['apellido_materno'] or "") +
+                  ", " + r['nombres'])
+        et = f"{nombre} - {r['grado'] or ''} {r['seccion'] or ''} - DNI {mask_dni(r['dni'])}"
+        ops[et] = r["id"]
+    sel = st.selectbox("Alumno", list(ops.keys()), key=clave + "_sel")
+    idal = ops[sel]
+    return _obtener_alumno(idal)
 
-# ─── VISTA ACTAS ────────────────────────────────────────────────────────
+# VISTA DECOMISOS
+def vista_decomisos():
+    mostrar_toast_pendiente()
+    st.title("Decomisos")
+
+    # FIX #6: solo actualizar vencidos 1 vez por día
+    hoy = hoy_str()
+    if st.session_state.get("_venc_actualizado") != hoy:
+        actualizar_vencidos()
+        st.session_state["_venc_actualizado"] = hoy
+
+    usuario = st.session_state["user"]
+
+    # FIX #5
+    if "dec_vista_radio" not in st.session_state:
+        st.session_state["dec_vista_radio"] = "Activos"
+
+    opciones = ["Activos", "Todos", "Registrar nuevo"]
+    vista_sel = st.radio(
+        "Vista",
+        opciones,
+        horizontal=True,
+        key="dec_vista_radio",
+        label_visibility="collapsed"
+    )
+
+    if vista_sel == "Activos":
+        _dec_activos(usuario)
+    elif vista_sel == "Todos":
+        _dec_todos()
+    else:
+        _dec_registrar(usuario)
+
+def _dec_activos(usuario):
+    st.subheader("Decomisos activos")
+    df = listar_decomisos_activos()
+    if df.empty:
+        st.success("No hay decomisos activos.")
+    else:
+        st.write(f"**{len(df)} decomiso(s) activo(s).**")
+        for _, d in df.iterrows():
+            dias_ret = dias_desde(d["fecha_decomiso"])
+            if d["fecha_limite"]:
+                dias_lim = dias_hasta(d["fecha_limite"])
+                if dias_lim < 0:
+                    cont_txt = f"⚠️ Vencido hace {abs(dias_lim)} día(s)"
+                elif dias_lim == 0:
+                    cont_txt = "⏰ Vence hoy"
+                else:
+                    cont_txt = f"⏳ Vence en {dias_lim} día(s)"
+            else:
+                cont_txt = "Sin fecha límite"
+            cls = "vencido" if d["estado"] == "Vencido" else ""
+            st.markdown(f"""
+            <div class="decomiso-card {cls}">
+                <div class="dec-obj">{d['objeto']}</div>
+                <div class="dec-meta">{d['alumno']} — {d['grado'] or ''} {d['seccion'] or ''}</div>
+                <div class="dec-meta">Retenido el {d['fecha_decomiso']} — {dias_ret} día(s) — Estado: <b>{d['estado']}</b></div>
+                <div class="dec-contador">{cont_txt}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            with st.expander(f"Acciones decomiso #{d['id']}"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    nuevo_estado = st.selectbox(
+                        "Cambiar estado",
+                        [e for e in ESTADOS_DECOMISO if e != "Devuelto"],
+                        index=0, key=f"dec_est_g_{d['id']}")
+                    if st.button("Guardar estado", key=f"dec_est_g_btn_{d['id']}"):
+                        cambiar_estado_decomiso(d["id"], nuevo_estado, usuario)
+                        guardar_toast("Estado actualizado.")
+                        st.rerun()
+                with c2:
+                    devuelto_a = st.text_input("Devuelto a",
+                                               key=f"dec_da_g_{d['id']}")
+                    obs_dev = st.text_input("Observaciones",
+                                            key=f"dec_obs_g_{d['id']}")
+                    if st.button("Marcar DEVUELTO", type="primary",
+                                 key=f"dec_dev_g_{d['id']}"):
+                        ok, msg = devolver_decomiso(d["id"], devuelto_a,
+                                                    obs_dev, usuario)
+                        if ok:
+                            guardar_toast(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+
+def _dec_todos():
+    st.subheader("Todos los decomisos")
+    df = listar_decomisos_todos()
+    if df.empty:
+        st.info("Sin decomisos registrados.")
+    else:
+        df_show = df.copy()
+        st.write(f"**{len(df)} decomiso(s).**")
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+
+def _dec_registrar(usuario):
+    st.subheader("Registrar decomiso manualmente")
+    st.caption("Selecciona un alumno y agrega uno o varios objetos.")
+    al = buscar_alumno_widget("dec_nuevo")
+    if not al:
+        return
+    st.markdown("---")
+    st.markdown(f"**{al['nombres']} {al['apellido_paterno']}** — "
+                f"{al['grado'] or ''} {al['seccion'] or ''} — "
+                f"DNI {mask_dni(al['dni'])}")
+
+    with st.form("form_decomiso"):
+        st.markdown("**Objetos a decomisar**")
+        st.caption("Agrega hasta 5 objetos por registro.")
+        objetos = []
+        for i in range(5):
+            c1, c2, c3 = st.columns([3, 2, 4])
+            with c1:
+                obj = st.text_input(f"Objeto {i+1}",
+                                    key=f"dec_obj_{i}",
+                                    placeholder="Celular, cartera...")
+            with c2:
+                f_lim = st.date_input(f"Fecha límite {i+1}",
+                                      value=ahora().date() + timedelta(days=3),
+                                      key=f"dec_fl_{i}")
+            with c3:
+                desc = st.text_input(f"Descripción {i+1}",
+                                     key=f"dec_desc_{i}",
+                                     placeholder="Marca, color, etc.")
+            if obj.strip():
+                objetos.append({
+                    "objeto": obj.strip(),
+                    "fecha_limite": f_lim.strftime("%Y-%m-%d"),
+                    "descripcion": desc.strip(),
+                })
+        sub = st.form_submit_button("Registrar decomisos", type="primary")
+
+    if sub:
+        if not objetos:
+            st.error("Agrega al menos un objeto.")
+        else:
+            n, errs_batch = crear_decomisos_batch(al["id"], None, objetos,
+                                                  usuario)
+            if n:
+                # FIX #5
+                st.session_state["dec_vista_radio"] = "Registrar nuevo"
+                guardar_toast(f"{n} decomiso(s) registrado(s).")
+                st.rerun()
+            for e in errs_batch:
+                st.warning(e)
+#  ACTAS 
 def vista_actas():
     mostrar_toast_pendiente()
     st.title("Actas firmadas")
@@ -2408,221 +2551,7 @@ def vista_actas():
                     else:
                         st.warning("PDF no disponible para esta acta.")
                     st.markdown("---")
-
-# ─── VISTA DECOMISOS (general) ──────────────────────────────────────────
-def vista_decomisos():
-    mostrar_toast_pendiente()
-    st.title("Decomisos")
-    actualizar_vencidos()
-    usuario = st.session_state["user"]
-
-    # FIX: key separada para controlar la vista
-    if "dec_vista_actual" not in st.session_state:
-        st.session_state["dec_vista_actual"] = "Activos"
-
-    opciones = ["Activos", "Todos", "Registrar nuevo"]
-    idx = opciones.index(st.session_state["dec_vista_actual"]) \
-          if st.session_state["dec_vista_actual"] in opciones else 0
-
-    vista_sel = st.radio(
-        "Vista",
-        opciones,
-        index=idx,
-        horizontal=True,
-        key="dec_vista_radio",
-        label_visibility="collapsed"
-    )
-    st.session_state["dec_vista_actual"] = vista_sel
-
-    if vista_sel == "Activos":
-        _dec_activos(usuario)
-    elif vista_sel == "Todos":
-        _dec_todos()
-    else:
-        _dec_registrar(usuario)
-
-
-def _dec_activos(usuario):
-    st.subheader("Decomisos activos")
-    df = listar_decomisos_activos()
-    if df.empty:
-        st.success("No hay decomisos activos.")
-    else:
-        st.write(f"**{len(df)} decomiso(s) activo(s).**")
-        for _, d in df.iterrows():
-            dias_ret = dias_desde(d["fecha_decomiso"])
-            if d["fecha_limite"]:
-                dias_lim = dias_hasta(d["fecha_limite"])
-                if dias_lim < 0:
-                    cont_txt = f"⚠️ Vencido hace {abs(dias_lim)} día(s)"
-                elif dias_lim == 0:
-                    cont_txt = "⏰ Vence hoy"
-                else:
-                    cont_txt = f"⏳ Vence en {dias_lim} día(s)"
-            else:
-                cont_txt = "Sin fecha límite"
-            cls = "vencido" if d["estado"] == "Vencido" else ""
-            st.markdown(f"""
-            <div class="decomiso-card {cls}">
-                <div class="dec-obj">{d['objeto']}</div>
-                <div class="dec-meta">{d['alumno']} — {d['grado'] or ''} {d['seccion'] or ''}</div>
-                <div class="dec-meta">Retenido el {d['fecha_decomiso']} — {dias_ret} día(s) — Estado: <b>{d['estado']}</b></div>
-                <div class="dec-contador">{cont_txt}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            with st.expander(f"Acciones decomiso #{d['id']}"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    nuevo_estado = st.selectbox(
-                        "Cambiar estado",
-                        [e for e in ESTADOS_DECOMISO if e != "Devuelto"],
-                        index=0, key=f"dec_est_g_{d['id']}")
-                    if st.button("Guardar estado", key=f"dec_est_g_btn_{d['id']}"):
-                        cambiar_estado_decomiso(d["id"], nuevo_estado, usuario)
-                        guardar_toast("Estado actualizado.")
-                        st.rerun()
-                with c2:
-                    devuelto_a = st.text_input("Devuelto a",
-                                                key=f"dec_da_g_{d['id']}")
-                    obs_dev = st.text_input("Observaciones",
-                                             key=f"dec_obs_g_{d['id']}")
-                    if st.button("Marcar DEVUELTO", type="primary",
-                                 key=f"dec_dev_g_{d['id']}"):
-                        ok, msg = devolver_decomiso(d["id"], devuelto_a,
-                                                     obs_dev, usuario)
-                        if ok:
-                            guardar_toast(msg)
-                            st.rerun()
-                        else:
-                            st.error(msg)
-
-
-def _dec_todos():
-    st.subheader("Todos los decomisos")
-    df = listar_decomisos_todos()
-    if df.empty:
-        st.info("Sin decomisos registrados.")
-    else:
-        df_show = df.copy()
-        st.write(f"**{len(df)} decomiso(s).**")
-        st.dataframe(df_show, use_container_width=True, hide_index=True)
-
-
-def _dec_registrar(usuario):
-    st.subheader("Registrar decomiso manualmente")
-    st.caption("Selecciona un alumno y agrega uno o varios objetos.")
-    al = buscar_alumno_widget("dec_nuevo")
-    if not al:
-        return
-    st.markdown("---")
-    st.markdown(f"**{al['nombres']} {al['apellido_paterno']}** — "
-                f"{al['grado'] or ''} {al['seccion'] or ''} — "
-                f"DNI {mask_dni(al['dni'])}")
-
-    with st.form("form_decomiso"):
-        st.markdown("**Objetos a decomisar**")
-        st.caption("Agrega hasta 5 objetos por registro.")
-        objetos = []
-        for i in range(5):
-            c1, c2, c3 = st.columns([3, 2, 4])
-            with c1:
-                obj = st.text_input(f"Objeto {i+1}",
-                                     key=f"dec_obj_{i}",
-                                     placeholder="Celular, cartera...")
-            with c2:
-                f_lim = st.date_input(f"Fecha límite {i+1}",
-                                       value=ahora().date() + timedelta(days=3),
-                                       key=f"dec_fl_{i}")
-            with c3:
-                desc = st.text_input(f"Descripción {i+1}",
-                                      key=f"dec_desc_{i}",
-                                      placeholder="Marca, color, etc.")
-            if obj.strip():
-                objetos.append({
-                    "objeto": obj.strip(),
-                    "fecha_limite": f_lim.strftime("%Y-%m-%d"),
-                    "descripcion": desc.strip(),
-                })
-        sub = st.form_submit_button("Registrar decomisos", type="primary")
-
-    if sub:
-        if not objetos:
-            st.error("Agrega al menos un objeto.")
-        else:
-            n, errs_batch = crear_decomisos_batch(al["id"], None, objetos,
-                                                   usuario)
-            if n:
-                # FIX: mantener "Registrar nuevo" activa
-                st.session_state["dec_vista_actual"] = "Registrar nuevo"
-                guardar_toast(f"{n} decomiso(s) registrado(s).")
-                st.rerun()
-            for e in errs_batch:
-                st.warning(e)
-
-
-def _dec_todos():
-    st.subheader("Todos los decomisos")
-    df = listar_decomisos_todos()
-    if df.empty:
-        st.info("Sin decomisos registrados.")
-    else:
-        df_show = df.copy()
-        st.write(f"**{len(df)} decomiso(s).**")
-        st.dataframe(df_show, use_container_width=True, hide_index=True)
-
-
-def _dec_registrar(usuario):
-    st.subheader("Registrar decomiso manualmente")
-    st.caption("Selecciona un alumno y agrega uno o varios objetos.")
-    al = buscar_alumno_widget("dec_nuevo")
-    if not al:
-        return
-    st.markdown("---")
-    st.markdown(f"**{al['nombres']} {al['apellido_paterno']}** — "
-                f"{al['grado'] or ''} {al['seccion'] or ''} — "
-                f"DNI {mask_dni(al['dni'])}")
-
-    with st.form("form_decomiso"):
-        st.markdown("**Objetos a decomisar**")
-        st.caption("Agrega hasta 5 objetos por registro.")
-        objetos = []
-        for i in range(5):
-            c1, c2, c3 = st.columns([3, 2, 4])
-            with c1:
-                obj = st.text_input(f"Objeto {i+1}",
-                                     key=f"dec_obj_{i}",
-                                     placeholder="Celular, cartera...")
-            with c2:
-                f_lim = st.date_input(f"Fecha límite {i+1}",
-                                       value=ahora().date() + timedelta(days=3),
-                                       key=f"dec_fl_{i}")
-            with c3:
-                desc = st.text_input(f"Descripción {i+1}",
-                                      key=f"dec_desc_{i}",
-                                      placeholder="Marca, color, etc.")
-            if obj.strip():
-                objetos.append({
-                    "objeto": obj.strip(),
-                    "fecha_limite": f_lim.strftime("%Y-%m-%d"),
-                    "descripcion": desc.strip(),
-                })
-        sub = st.form_submit_button("Registrar decomisos", type="primary")
-
-    if sub:
-        if not objetos:
-            st.error("Agrega al menos un objeto.")
-        else:
-            n, errs_batch = crear_decomisos_batch(al["id"], None, objetos,
-                                                   usuario)
-            if n:
-                # FIX: mantener la vista "Registrar nuevo" activa
-                st.session_state["dec_vista"] = "Registrar nuevo"
-                guardar_toast(f"{n} decomiso(s) registrado(s).")
-                st.rerun()
-            for e in errs_batch:
-                st.warning(e)
-
-# ─── REPORTES ───────────────────────────────────────────────────────────
+# REPORTES 
 def reporte_diario_incidencias(fecha):
     return leer_df("""
         SELECT i.id, i.fecha, i.hora, i.tipo, i.categoria, i.estado,
@@ -2635,6 +2564,7 @@ def reporte_diario_incidencias(fecha):
         WHERE i.fecha=?
         ORDER BY i.hora DESC
     """, (fecha,))
+
 
 def reporte_mensual_incidencias(anio, mes):
     ini = f"{anio:04d}-{mes:02d}-01"
@@ -2653,6 +2583,7 @@ def reporte_mensual_incidencias(anio, mes):
         WHERE i.fecha >= ? AND i.fecha < ?
         ORDER BY i.fecha DESC, i.hora DESC
     """, (ini, fin))
+
 
 def vista_reportes():
     mostrar_toast_pendiente()
@@ -2769,11 +2700,11 @@ def vista_reportes():
         c1, c2 = st.columns(2)
         with c1:
             filtro = st.selectbox("Filtro",
-                                   ["Todos", "Activos", "Devueltos", "Vencidos"],
-                                   key="rep_dec_fil")
+                                  ["Todos", "Activos", "Devueltos", "Vencidos"],
+                                  key="rep_dec_fil")
         with c2:
             anio_d = st.number_input("Año", min_value=2020, max_value=2100,
-                                      value=ahora().year, step=1, key="rep_dec_anio")
+                                     value=ahora().year, step=1, key="rep_dec_anio")
         q = """SELECT d.id, d.fecha_decomiso, d.hora_decomiso, d.objeto,
                d.descripcion, d.fecha_limite, d.estado, d.fecha_devolucion,
                d.devuelto_a, d.retenido_por,
@@ -2802,13 +2733,13 @@ def vista_reportes():
             st.download_button("Descargar Excel", buf.getvalue(),
                                f"decomisos_{anio_d}.xlsx",
                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-# ─── USUARIOS ───────────────────────────────────────────────────────────
+#  USUARIOS 
 def _obtener_usuario(idu):
     con = conn()
     cur = con.execute("SELECT * FROM usuarios WHERE id=?", (idu,))
     f = cur.fetchone()
     return dict(f) if f else None
+
 
 def vista_usuarios():
     mostrar_toast_pendiente()
@@ -2917,7 +2848,7 @@ def vista_usuarios():
                         guardar_toast("Usuario editado correctamente.")
                         st.rerun()
 
-# ─── AUDITORIA ──────────────────────────────────────────────────────────
+#auditoria
 def vista_auditoria():
     mostrar_toast_pendiente()
     st.title("Auditoría")
@@ -2926,8 +2857,6 @@ def vista_auditoria():
     st.write(f"**{len(df)} registros**")
     if not df.empty:
         st.dataframe(df, use_container_width=True, hide_index=True)
-
-# ─── MAIN ───────────────────────────────────────────────────────────────
 def main():
     st.set_page_config(page_title="Incidencias TOECE",
                        page_icon="📋", layout="wide",
@@ -2958,6 +2887,7 @@ def main():
     except Exception as e:
         st.error(f"Error inesperado: {e}")
         log.exception("Error en main")
+
 
 if __name__ == "__main__":
     main()
