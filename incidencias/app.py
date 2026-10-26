@@ -237,8 +237,367 @@ def guardar_toast(msg, tipo="ok"):
 
 # ─────────────────────────── ESTILOS ───────────────────────────────────
 def aplicar_estilos():
-    # (Mismo bloque de estilos que ya tenías, omitido por espacio)
-    pass
+    st.markdown("""
+    <style>
+    :root{
+        --azul: #0A3D91;
+        --azul-dark: #072A63;
+        --azul-soft: rgba(10,61,145,.08);
+        --azul-border: rgba(10,61,145,.25);
+        --azul-light: #E8EFF9;
+        --radius: 10px;
+        --radius-sm: 6px;
+        --sombra: 0 1px 3px rgba(10,61,145,.08);
+    }
+    @media (prefers-color-scheme: dark){
+        :root{
+            --azul: #5B8DEF;
+            --azul-dark: #7BA5F0;
+            --azul-soft: rgba(91,141,239,.15);
+            --azul-border: rgba(91,141,239,.35);
+            --azul-light: rgba(91,141,239,.15);
+            --sombra: 0 1px 3px rgba(0,0,0,.3);
+        }
+    }
+    html, body, [class*="css"], .stApp{
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                     Roboto, sans-serif !important;
+        font-size: 15px !important;
+    }
+    h1, h2, h3, h4{
+        font-family: 'Inter', sans-serif !important;
+        letter-spacing: -0.3px;
+        color: var(--azul) !important;
+    }
+    h1{ font-size: 28px !important; font-weight: 800 !important; }
+    h2{ font-size: 22px !important; font-weight: 700 !important; }
+    h3{ font-size: 18px !important; font-weight: 700 !important; }
+    .stButton > button, .stFormSubmitButton > button, .stDownloadButton > button{
+        background: var(--azul) !important;
+        color: #FFF !important;
+        border-radius: var(--radius-sm) !important;
+        font-weight: 600 !important;
+        border: none !important;
+        padding: 10px 18px !important;
+        font-size: 14px !important;
+        min-height: 42px;
+        transition: all .15s ease;
+        box-shadow: 0 1px 3px rgba(10,61,145,.20);
+    }
+    .stButton > button:hover, .stFormSubmitButton > button:hover,
+    .stDownloadButton > button:hover{
+        background: var(--azul-dark) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(10,61,145,.25);
+    }
+    .stTextInput input, .stNumberInput input, .stDateInput input,
+    .stTimeInput input, .stTextArea textarea, .stSelectbox > div > div{
+        border-radius: var(--radius-sm) !important;
+        min-height: 42px;
+        font-size: 14px !important;
+        border: 1.5px solid var(--azul-border) !important;
+    }
+    .stTextInput input:focus, .stTextArea textarea:focus{
+        border-color: var(--azul) !important;
+        box-shadow: 0 0 0 3px var(--azul-soft) !important;
+    }
+    section[data-testid="stSidebar"]{
+        border-right: 1px solid var(--azul-border);
+    }
+    section[data-testid="stSidebar"] .stRadio label{
+        border-radius: var(--radius-sm) !important;
+        padding: 10px 14px !important;
+        font-weight: 500 !important;
+        font-size: 14px !important;
+        margin: 2px 0 !important;
+        cursor: pointer;
+        transition: all .15s ease;
+        border-left: 3px solid transparent;
+    }
+    section[data-testid="stSidebar"] .stRadio label:hover{
+        background: var(--azul-soft) !important;
+        border-left-color: var(--azul);
+    }
+    section[data-testid="stSidebar"] .stRadio input{ display: none; }
+    .sidebar-header{
+        background: linear-gradient(135deg, var(--azul) 0%, var(--azul-dark) 100%);
+        padding: 22px 18px;
+        margin: 8px 10px 16px 10px;
+        border-radius: var(--radius);
+        color: #FFF;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(10,61,145,.25);
+    }
+    .sidebar-header .avatar{
+        width: 56px; height: 56px; border-radius: 50%;
+        background: rgba(255,255,255,.20);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 22px; font-weight: 800; color: #FFF;
+        margin: 0 auto 10px auto;
+        border: 2px solid rgba(255,255,255,.4);
+    }
+    .sidebar-header .nombre{ font-size: 15px; font-weight: 700; color: #FFF !important; }
+    .sidebar-header .rol{
+        display: inline-block; margin-top: 8px; padding: 3px 12px;
+        background: rgba(255,255,255,.22); border-radius: 20px;
+        font-size: 10px; font-weight: 800; text-transform: uppercase;
+        letter-spacing: .12em; color: #FFF !important;
+    }
+    .alumno-hero{
+        background: linear-gradient(135deg, var(--azul) 0%, var(--azul-dark) 100%);
+        border-radius: 14px;
+        padding: 26px 30px;
+        margin-bottom: 22px;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        flex-wrap: wrap;
+        color: #FFF;
+        box-shadow: 0 4px 16px rgba(10,61,145,.20);
+    }
+    .alumno-hero .hero-avatar{
+        width: 82px; height: 82px; border-radius: 50%;
+        background: rgba(255,255,255,.20);
+        border: 2px solid rgba(255,255,255,.45);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 34px; font-weight: 800; color: #FFF;
+        flex-shrink: 0;
+    }
+    .alumno-hero .hero-info{ flex: 1; min-width: 240px; }
+    .alumno-hero .hero-nombre{
+        font-size: 24px; font-weight: 800; color: #FFF !important;
+        margin-bottom: 4px;
+    }
+    .alumno-hero .hero-meta{
+        font-size: 14px; opacity: .92; color: #FFF !important;
+        line-height: 1.5;
+    }
+    .alumno-hero .hero-badge{
+        display: inline-block; margin-top: 10px;
+        padding: 4px 14px; border-radius: 20px;
+        font-size: 10px; font-weight: 800;
+        text-transform: uppercase; letter-spacing: .12em;
+        background: rgba(255,255,255,.25);
+        border: 1px solid rgba(255,255,255,.45);
+        color: #FFF !important;
+    }
+    .card{
+        background: var(--secondary-background-color);
+        border: 1px solid var(--azul-border);
+        border-radius: var(--radius);
+        padding: 20px 22px;
+        margin-bottom: 16px;
+        box-shadow: var(--sombra);
+    }
+    .card .card-title{
+        font-size: 11px; font-weight: 800;
+        text-transform: uppercase; letter-spacing: .12em;
+        color: var(--azul);
+        margin-bottom: 14px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--azul-border);
+    }
+    .card .info-line{
+        display: flex; padding: 6px 0;
+        font-size: 14px;
+        border-bottom: 1px solid var(--azul-soft);
+    }
+    .card .info-line:last-child{ border-bottom: none; }
+    .card .info-label{
+        font-size: 12px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .05em;
+        opacity: 0.65;
+        min-width: 130px;
+    }
+    .card .info-valor{
+        font-weight: 500;
+    }
+    .kpi-grid{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .kpi{
+        background: var(--secondary-background-color);
+        border: 1px solid var(--azul-border);
+        border-radius: var(--radius-sm);
+        padding: 16px 14px;
+        text-align: center;
+        transition: all .15s ease;
+    }
+    .kpi:hover{
+        border-color: var(--azul);
+        box-shadow: var(--sombra);
+    }
+    .kpi .kpi-num{
+        font-size: 28px; font-weight: 800;
+        color: var(--azul); line-height: 1;
+        margin-bottom: 6px;
+    }
+    .kpi .kpi-lbl{
+        font-size: 10px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .08em;
+        opacity: 0.65; line-height: 1.3;
+    }
+    .kpi.kpi-alerta .kpi-num{ color: #C53030; }
+    @media (prefers-color-scheme: dark){
+        .kpi.kpi-alerta .kpi-num{ color: #FC8181; }
+    }
+    .kpi.kpi-ok .kpi-num{ color: #2F855A; }
+    @media (prefers-color-scheme: dark){
+        .kpi.kpi-ok .kpi-num{ color: #68D391; }
+    }
+    .kpi.kpi-warn .kpi-num{ color: #C05621; }
+    @media (prefers-color-scheme: dark){
+        .kpi.kpi-warn .kpi-num{ color: #F6AD55; }
+    }
+    .inc-card{
+        background: var(--secondary-background-color);
+        border: 1px solid var(--azul-border);
+        border-left: 4px solid var(--azul);
+        border-radius: var(--radius-sm);
+        padding: 14px 18px;
+        margin-bottom: 10px;
+    }
+    .inc-card.leve{ border-left-color: #EAB308; }
+    .inc-card.grave{ border-left-color: #DD6B20; }
+    .inc-card.muy-grave{ border-left-color: #C53030; }
+    .inc-card .inc-head{
+        display: flex; justify-content: space-between;
+        align-items: center; margin-bottom: 6px;
+        flex-wrap: wrap; gap: 8px;
+    }
+    .inc-card .inc-tipo{
+        font-size: 13px; font-weight: 800;
+        color: var(--azul);
+    }
+    .inc-card .inc-estado{
+        font-size: 10px; font-weight: 800;
+        text-transform: uppercase; letter-spacing: .08em;
+        padding: 3px 10px; border-radius: 12px;
+        background: var(--azul-soft);
+        color: var(--azul);
+    }
+    .inc-card .inc-estado.resuelta{ background: #C6F6D5; color: #22543D; }
+    @media (prefers-color-scheme: dark){
+        .inc-card .inc-estado.resuelta{ background: rgba(56,161,105,.25); color: #9AE6B4; }
+    }
+    .inc-card .inc-estado.proceso{ background: #FEFCBF; color: #744210; }
+    @media (prefers-color-scheme: dark){
+        .inc-card .inc-estado.proceso{ background: rgba(214,158,46,.25); color: #F6E05E; }
+    }
+    .inc-card .inc-estado.archivada{ background: #E2E8F0; color: #4A5568; }
+    @media (prefers-color-scheme: dark){
+        .inc-card .inc-estado.archivada{ background: rgba(113,128,150,.25); color: #CBD5E0; }
+    }
+    .inc-card .inc-desc{
+        font-size: 13px;
+        line-height: 1.5; margin-top: 6px;
+        opacity: 0.85;
+    }
+    .inc-card .inc-meta{
+        font-size: 11px;
+        opacity: 0.6;
+        margin-top: 8px;
+    }
+    div[data-testid="stMetric"]{
+        background: var(--secondary-background-color);
+        border: 1px solid var(--azul-border);
+        border-radius: var(--radius-sm);
+        padding: 14px 16px !important;
+        box-shadow: var(--sombra);
+    }
+    div[data-testid="stMetric"] label{
+        font-size: 11px !important; font-weight: 700 !important;
+        text-transform: uppercase; letter-spacing: .05em !important;
+        opacity: 0.65 !important;
+    }
+    div[data-testid="stMetric"] div[data-testid="stMetricValue"]{
+        font-size: 26px !important; font-weight: 800 !important;
+        color: var(--azul) !important;
+    }
+    .stTabs [data-baseweb="tab-list"]{
+        gap: 2px;
+        border-bottom: 2px solid var(--azul-border);
+    }
+    .stTabs [data-baseweb="tab"]{
+        font-weight: 600 !important;
+        padding: 10px 18px !important;
+        font-size: 14px !important;
+        opacity: 0.7;
+    }
+    .stTabs [aria-selected="true"]{
+        color: var(--azul) !important;
+        border-bottom: 3px solid var(--azul) !important;
+        font-weight: 800 !important;
+        opacity: 1;
+    }
+    .streamlit-expanderHeader, details summary{
+        border: 1px solid var(--azul-border) !important;
+        border-radius: var(--radius-sm) !important;
+        font-weight: 600 !important;
+        padding: 12px 14px !important;
+        font-size: 14px !important;
+    }
+    .streamlit-expanderHeader:hover{
+        border-color: var(--azul) !important;
+    }
+    .decomiso-card{
+        background: var(--secondary-background-color);
+        border: 1px solid var(--azul-border);
+        border-left: 4px solid #DD6B20;
+        border-radius: var(--radius-sm);
+        padding: 14px 18px;
+        margin-bottom: 10px;
+    }
+    .decomiso-card.devuelto{ border-left-color: #38A169; }
+    .decomiso-card.vencido{ border-left-color: #C53030; }
+    .decomiso-card .dec-obj{
+        font-size: 15px; font-weight: 800;
+        color: var(--azul);
+    }
+    .decomiso-card .dec-meta{
+        font-size: 12px;
+        opacity: 0.7;
+        margin-top: 4px;
+    }
+    .decomiso-card .dec-contador{
+        font-size: 12px; font-weight: 700;
+        margin-top: 6px;
+    }
+    .decomiso-card .dec-contador-alerta{
+        background: rgba(197,48,48,.12);
+        color: #C53030;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border-left: 3px solid #C53030;
+    }
+    @media (prefers-color-scheme: dark){
+        .decomiso-card .dec-contador-alerta{
+            background: rgba(252,129,129,.18);
+            color: #FC8181;
+            border-left-color: #FC8181;
+        }
+    }
+    hr{
+        border: none;
+        height: 1px;
+        background: var(--azul-border);
+        margin: 18px 0;
+    }
+    @media (max-width: 768px){
+        h1{ font-size: 22px !important; }
+        .alumno-hero{ padding: 20px; gap: 16px; }
+        .alumno-hero .hero-avatar{ width: 64px; height: 64px; font-size: 26px; }
+        .alumno-hero .hero-nombre{ font-size: 19px; }
+        .kpi-grid{ grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .kpi .kpi-num{ font-size: 22px; }
+        .card .info-line{ flex-direction: column; }
+        .card .info-label{ min-width: auto; margin-bottom: 2px; }
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 
 # ─────────────────────────── HELPERS ALUMNOS ───────────────────────────
